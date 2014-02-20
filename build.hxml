@@ -1,0 +1,24 @@
+-cmd mkdir -p bin
+-cmd cp res/* bin
+
+--next
+
+-lib hxparse
+-lib haxeparser
+-resource res/config.json@config
+-cp src
+
+--each
+
+-main haxeprinter.Main
+-neko bin/format.n
+
+--next
+
+-main haxeprinter.Demo
+-js bin/index.js
+-resource test/foo/bar/TestSource.hx@source
+
+--next
+
+-cmd neko bin/format.n test
