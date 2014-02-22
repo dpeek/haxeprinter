@@ -37,7 +37,8 @@ class Main
 			if (new haxe.io.Path(path).ext != 'hx') return;
 
 			var outputPath = haxe.io.Path.withExtension(path, 'formatted.hx');
-			sys.io.File.saveContent(outputPath, formatSource(path));
+			var formatted = formatSource(path);
+			//sys.io.File.saveContent(outputPath, formatted);
 		}
 	}
 
