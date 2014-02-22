@@ -7,19 +7,21 @@ import hxparse.Unexpected;
 
 class Demo
 {
-	static var printer = new Printer();
-
+	static var cfg;
+	
 	static function main()
 	{
 		var input = document.getElementById('input');
 		var output = document.getElementById('output');
 		var config = document.getElementById('config');
 
+		cfg = new Formatter.Config();
+		
 		var html = '<form>';
-		for (field in Reflect.fields(printer.config))
+		for (field in Reflect.fields(cfg))
 		{
 			var label = field.split('_').join(' ');
-			var value = Reflect.field(printer.config, field);
+			var value = Reflect.field(cfg, field);
 			if (value == true || value == false)
 			{
 				var checked = value ? ' checked' : '';
@@ -31,7 +33,7 @@ class Demo
 			if (e.target.tagName != 'INPUT') return;
 			var name = e.target.getAttribute('name');
 			var value = e.target.checked;
-			Reflect.setField(printer.config, name, value);
+			Reflect.setField(cfg, name, value);
 			update();
 		}
 
@@ -44,16 +46,16 @@ class Demo
 	{
 		var input = document.getElementById('input');
 		var output = document.getElementById('output');
-		output.innerHTML = format(input.innerText);
+		output.innerHTML = StringTools.htmlEscape(format(input.innerText));
 	}
 
 	static function format(source:String)
 	{
 		var input = byte.ByteData.ofString(source);
-		var parser = new haxeparser.HaxeParser(input, 'foo/bar/TestSource.hx');
+		var formatter = new Formatter(input, cfg, "foo/bar/TestSource.hx");
 
-		var ast = try {
-			parser.parse();
+		var output = try {
+			formatter.getContent();
 		} catch(e:NoMatch<Dynamic>) {
 			return '<span class="error">' + e.pos.format(input) + ": Unexpected " +e.token.tok + '</span>';
 		} catch(e:Unexpected<Dynamic>) {
@@ -62,6 +64,6 @@ class Demo
 			return '<span class="error">unknown error</span>';
 		}
 
-		return printer.printAST(ast);
+		return output;
 	}
 }

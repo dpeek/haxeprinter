@@ -45,17 +45,16 @@ class Main
 	{
 		var source = sys.io.File.getContent(path);
 		var input = byte.ByteData.ofString(source);
-		var parser = new haxeparser.HaxeParser(input, path);
-
-		var ast = try {
-			parser.parse();
+		var formatter = new haxeprinter.Formatter(input, new haxeprinter.Formatter.Config(), path);
+		
+		var output = try {
+			formatter.getContent();
 		} catch(e:NoMatch<Dynamic>) {
 			throw e.pos.format(input) + ": Unexpected " +e.token.tok;
 		} catch(e:Unexpected<Dynamic>) {
 			throw e.pos.format(input) + ": Unexpected " + e.token.tok;
 		}
 
-		var printer = new Printer();
-		return printer.printAST(ast);
+		return output;
 	}
 }

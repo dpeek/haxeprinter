@@ -1,21 +1,23 @@
-  
+/*
+	Test file
+*/
 	
 
    	package    	  foo.bar  	 ;
 
 
    	import haxe.ds.*;
-   	
+
 
    	import haxe.Http in HaxeHttp;
 
 
   import haxe.Json;
 
- 	  class  	 TestSource  <T:(String,Int)> extends bar.Foo<Array<String>> implements Bar<Int, Float> implements String	
+ 	  class  	 TestSource  <T:(String,Int)> extends bar.Foo<Array<String>> implements Bar<Int, Float> implements String
 
  	  	{
-   
+
 
    public var foo:Bar;
 
@@ -31,7 +33,7 @@
  	  	if (true) trace('hello world');
  	  }
 
- 	  private static macro inline function foo<T:(Int,Bool)>(a:String, b:Array<Int>, c, ?d:Foo, ?e:Int=10):List<{x:Int, y:Int}>      {  
+ 	  private static #if (level > 9000) macro #end inline function foo<T:(Int,Bool)>(a:String, b:Array<Int>, c, ?d:Foo, ?e:Int=10):List<{x:Int, y:Int}>      {
 
  	doStuff();
 
@@ -45,16 +47,16 @@
  	  		}
 
 
- 	 }   	 
+ 	 }
 
-  extern    private class Another {}
+  extern    /*private*/ class Another {}
 
 
   	interface   Foo {   }
 
 
  private extern 	enum Food<T>
-			{	
+			{
 	Lunch<T>;
 
 	Dinner(starter:String, dessert  :  T);
