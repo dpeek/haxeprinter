@@ -86,8 +86,29 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 					print(" ");
 				}
 				peek(0);
-			case Sharp(s = "if" | "elseif"):
-				var count = 0;
+			case Sharp("error"):
+				junk();
+				print("#error ");
+				switch(peek(0).tok) {
+					case Const(CString(s)):
+						junk();
+						print('"$s"');
+					case _:
+						throw "String expected";
+				}
+				peek(0);
+			case Sharp("if"):
+				print("#if ");
+				junk();
+				skipMacroCond();
+				peek(0);
+			case Sharp("#end"):
+				print("#end");
+				junk();
+				peek(0);
+			case Sharp(s = "elseif" | "else"):
+				print('#$s');
+				var count = 1;
 				while(true) {
 					var tok = super.peek(0);
 					junk();
@@ -111,6 +132,40 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				peek(0);
 			case _:
 				tok;
+		}
+	}
+	
+	function skipMacroCond() {
+		switch super.peek(0).tok {
+			case tok = Const(CIdent(_)) | Kwd(_):
+				print(TokenDefPrinter.print(tok));
+				junk();
+			case POpen:
+				var pCount = 0;
+				while(true) {
+					switch super.peek(0).tok {
+						case POpen:
+							++pCount;
+							junk();
+							print("(");
+						case PClose:
+							--pCount;
+							junk();
+							print(")");
+							if (pCount == 0) {
+								return;
+							}
+						case tok:
+							junk();
+							print(TokenDefPrinter.print(tok));
+					}
+				}
+			case Unop(OpNot):
+				print("!");
+				junk();
+				skipMacroCond();
+			case tok:
+				throw 'Invalid macro cond: $tok';
 		}
 	}
 	
