@@ -1,2 +1,4 @@
 *.formatted.hx
 /bin
+res/config-default.json
+haxeprinter.hxproj

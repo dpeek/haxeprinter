@@ -5,10 +5,12 @@
 -lib hxparse
 -lib haxeparser
 -resource res/config.json@config
+-resource res/config-default.json@config-default
 -cp src
 
 --each
 
+--macro haxeprinter.Macro.generateConfigTemplate()
 -main haxeprinter.Main
 -neko bin/format.n
 

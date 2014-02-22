@@ -20,7 +20,7 @@
 	"space_between_function_args":true,
 	"space_around_function_arg_assign":true,
 	"space_around_property_assign":true,
-	"space_betwen_property_get_set":true,
+	"space_between_property_get_set":true,
 	"remove_private_field_modifier":true,
 	"empty_line_between_enum_constructors":false,
 	"empty_line_between_typedef_fields":false,

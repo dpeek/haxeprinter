@@ -3,43 +3,6 @@ package haxeprinter;
 import haxeparser.Data;
 import haxeparser.HaxeLexer;
 
-class Config {
-	public var empty_line_after_package = true;
-	public var empty_line_after_import = false;
-	public var empty_line_before_type = true;
-	public var empty_line_between_fields = true;
-	public var empty_line_between_enum_constructors = false;
-	
-	public var extends_on_newline = false;
-	public var implements_on_newline = false;
-	
-	public var modifier_order = ["override", "public", "private", "static", "extern", "dynamic", "inline", "macro"];
-	
-	public var cuddle_type_braces = true;
-	public var cuddle_method_braces = true;
-	
-	public var space_between_type_params = true;
-	public var space_between_type_param_constraints = true;
-	public var space_between_property_get_set = true;
-	public var space_between_function_args = true;
-	
-	public var space_before_type_hint_colon = false;
-	public var space_after_type_hint_colon = false;
-	
-	public var space_around_variable_assign = true;
-	
-	public var space_around_function_arg_assign = true;
-	
-	public var space_before_structure_colon = false;
-	public var space_after_structure_colon = true;
-
-	public var space_around_typedef_assign = true;
-	
-	public var space_after_structure_field_comma = true;
-	
-	public function new() { }
-}
-
 class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.ParserBuilder {
 	
 	var input:byte.ByteData;
@@ -401,7 +364,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				parseAnyIdent();
 				popt(parsePropertyAccessors);
 				popt(parseTypeHint);
-				popt(parseAssignment.bind(cfg.space_around_variable_assign, cfg.space_around_variable_assign));
+				popt(parseAssignment.bind(cfg.space_around_property_assign, cfg.space_around_property_assign));
 				semicolon();
 			case [{tok:Kwd(KwdFunction)}]:
 				if (cfg.empty_line_between_fields) {
@@ -497,7 +460,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 			case [{tok:BrOpen}]:
 				// TODO: config?
 				print("{ ");
-				psep(Comma, parseStructureTypeField, withSpace(cfg.space_after_structure_field_comma));
+				psep(Comma, parseStructureTypeField, withSpace(cfg.space_between_anon_type_fields));
 				expect(BrClose);
 		}
 	}
@@ -574,7 +537,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 							space();
 						}
 						parseExpr();
-						psep(Comma, parseStructureElement, withSpace(cfg.space_after_structure_field_comma));
+						psep(Comma, parseStructureElement, withSpace(cfg.space_between_anon_type_fields));
 					case _:
 						// block
 						brace(cfg.cuddle_method_braces);

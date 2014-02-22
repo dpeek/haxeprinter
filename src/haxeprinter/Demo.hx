@@ -15,7 +15,15 @@ class Demo
 		var output = document.getElementById('output');
 		var config = document.getElementById('config');
 
-		cfg = new Formatter.Config();
+		cfg = haxe.Json.parse(haxe.Resource.getString('config-default'));
+		
+		var cfg2 = haxe.Json.parse(haxe.Resource.getString('config'));
+		for (field in Reflect.fields(cfg2)) {
+			if (!Reflect.hasField(cfg, field)) {
+				throw 'Invalid config field: $field';
+			}
+			Reflect.setField(cfg, field, Reflect.field(cfg2, field));
+		}
 		
 		var html = '<form>';
 		for (field in Reflect.fields(cfg))
