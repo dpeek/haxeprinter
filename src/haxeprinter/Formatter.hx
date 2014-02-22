@@ -188,6 +188,8 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				print("macro");
 			case [{tok:Kwd(KwdNew)}]:
 				print("new");
+			case [{tok:Dollar(s)}]:
+				print("$" +s);
 		}
 	}
 	
@@ -600,18 +602,32 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				expect(Binop(OpGt));
 		}
 	}
+	
+	function parseStructureFields() {
+		switch stream {
+			case [_ = parseClassFields(false)]:
+			case [ _ = psep(Comma, parseStructureTypeField, withSpace(cfg.space_between_anon_type_fields))]:
+				expect(BrClose);
+		}
+	}
 
 	function parseComplexType() {
 		switch stream {
 			case [_ = parseDotPath()]:
+			case [{tok:POpen}]:
+				print("(");
+				parseComplexType();
+				expect(PClose);
 			case [{tok:BrOpen}]:
 				// TODO: config?
 				print("{ ");
 				switch stream {
-					case [_ = parseClassFields(false)]:
-					case _:
-						psep(Comma, parseStructureTypeField, withSpace(cfg.space_between_anon_type_fields));
-						expect(BrClose);
+					case [{tok:Binop(OpGt)}]:
+						print("> ");
+						parseComplexType();
+						expect(Comma);
+						parseStructureFields();
+					case [_ = parseStructureFields()]:
 				}
 		}
 		popt(parseComplexTypeNext);
@@ -645,7 +661,11 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	// expression parsing
 	
 	function parseStructureElement() {
-		parseAnyIdent();
+		switch stream {
+			case [_ = parseAnyIdent()]:
+			case [{tok:Const(CString(s))}]:
+				print('"$s"');
+		}
 		if (cfg.space_before_structure_colon) {
 			space();
 		}
@@ -662,24 +682,40 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		popt(parseAssignment.bind(true, true));
 	}
 	
-	function parseBlockElements() {
+	function parseMacroExpr() {
 		switch stream {
-			case [{tok:BrClose}]:
-				lessTabs();
-				newline();
-				print("}");
-				return;
-			case _:
+			case [{tok:DblDot}]:
+				print(" : "); // TODO
+				parseComplexType();
+			case [{tok:Kwd(KwdVar)}]:
+				print("var ");
+				psep(Comma, parseVarDeclaration, withSpace(true)); // TODO
+			case [_ = parseExpr()]:
 		}
-		newline();
+	}
+	
+	function parseCatch() {
+		switch stream {
+			case [{tok:Kwd(KwdCatch)}]:
+				print("catch ");
+				expect(POpen);
+				parseAnyIdent();
+				expect(DblDot);
+				parseComplexType();
+				expect(PClose);
+				parseExpr();
+		}
+	}
+	
+	function parseBlockElement() {
 		switch stream {
 			case [{tok:Kwd(KwdVar)}]:
 				print("var ");
 				psep(Comma, parseVarDeclaration, withSpace(true)); // TODO: config?
+				semicolon();
 			case [_ = parseExpr()]:
+				semicolon();
 		}
-		semicolon();
-		parseBlockElements();
 	}
 	
 	// TODO: this whole part is really awkward
@@ -728,7 +764,8 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 						}
 						parseExprNext();
 						semicolon();
-						parseBlockElements();
+						plist(parseBlockElement);
+						expect(BrClose);
 				}
 			case [{tok:BrClose}]:
 				print("{ }");
@@ -736,16 +773,20 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				brace(cfg.cuddle_method_braces);
 				print("{");
 				moreTabs();
-				parseBlockElements();
+				plist(parseBlockElement);
+				expect(BrClose);
 		}
 	}
 	
 	function parseExpr() {
+		parseMeta();
 		switch stream {
 			case [{tok:Const(CInt(s) | CFloat(s) | CIdent(s))}]:
 				print(s);
 			case [{tok:Const(CString(s))}]:
 				print('"$s"');
+			case [{tok:Const(CRegexp(p, o))}]:
+				print('~/$p/$o');
 			case [{tok:Kwd(KwdTrue)}]:
 				print("true");
 			case [{tok:Kwd(KwdFalse)}]:
@@ -757,6 +798,18 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 			case [{tok:Kwd(KwdUntyped)}]:
 				print("untyped ");
 				parseExpr();
+			case [{tok:Kwd(KwdMacro)}]:
+				print("macro ");
+				parseMacroExpr();
+			case [{tok:Dollar(s)}]:
+				print("$" +s);
+				switch stream {
+					case [{tok:BrOpen}]:
+						print("{");
+						parseExpr();
+						expect(BrClose);
+					case _:
+				}
 			case [{tok:Kwd(KwdBreak)}]:
 				print("break");
 			case [{tok:Kwd(KwdContinue)}]:
@@ -798,7 +851,15 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 			case [{tok:POpen}]:
 				print("(");
 				parseExpr();
-				expect(PClose);
+				switch stream {
+					case [{tok:DblDot}]:
+						print(" : "); // TODO
+						parseComplexType();
+						expect(PClose);
+					case [{tok:PClose}]:
+					case _:
+						unexpected();
+				}
 			case[{tok:Kwd(KwdIf)}]:
 				print("if ");
 				expect(POpen);
@@ -848,12 +909,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 			case [{tok:Kwd(KwdTry)}]:
 				print("try ");
 				parseExpr();
-				expect(Kwd(KwdCatch));
-				expect(POpen);
-				parseAnyIdent();
-				expect(DblDot);
-				parseComplexType();
-				expect(PClose);
+				plist(parseCatch);
 			case [{tok:Kwd(KwdSwitch)}]:
 				print("switch ");
 				parseExpr();
@@ -866,7 +922,18 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 							newline();
 							print("case ");
 							psep(Comma, parseExpr, withSpace(true)); // TODO: config?
-							expect(DblDot);
+							switch stream  {
+								case [{tok:DblDot}]:
+									print(": ");
+								case [{tok:Kwd(KwdIf)}]:
+									print("if ");
+									expect(POpen);
+									parseExpr();
+									expect(PClose);
+									expect(DblDot);
+								case _:
+									unexpected();
+							}
 							moreTabs();
 							while(true) {
 								switch(peek(0).tok) {
@@ -874,8 +941,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 										break;
 									case _:
 										newline();
-										parseExpr();
-										semicolon();
+										parseBlockElement();
 								}
 							}
 							lessTabs();
@@ -890,8 +956,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 										break;
 									case _:
 										newline();
-										parseExpr();
-										semicolon();
+										parseBlockElement();
 								}
 							}
 							lessTabs();
@@ -956,8 +1021,10 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				expect(DblDot);
 				space(); // TODO: config
 				parseExpr();
+				parseExprNext();
 			case [{tok:Unop(op)}]:
 				print(new haxe.macro.Printer().printUnop(op));
+				parseExprNext();
 			case _:
 		}
 	}
@@ -1011,5 +1078,13 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				return;
 			}
 		}
+	}
+	
+	function plist<T>(f:Void->T) {
+		try {
+			while(true) {
+				f();
+			}
+		} catch(e:hxparse.NoMatch<Dynamic>) {}
 	}
 }
