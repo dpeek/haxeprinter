@@ -1,5 +1,6 @@
 package haxeprinter;
 
+import haxe.macro.Expr;
 import haxeparser.Data;
 import haxeparser.HaxeLexer;
 
@@ -65,6 +66,12 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		}
 	}
 	
+	function printString(s:String, pos:Position) {
+		// TODO: interpolation formatting?
+		var c = input.readString(pos.min, 1);
+		print('$c$s$c');
+	}
+
 	override function peek(n):Token {
 		if (n != 0) throw 'n != 0';
 		var tok = super.peek(n);
@@ -663,8 +670,8 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	function parseStructureElement() {
 		switch stream {
 			case [_ = parseAnyIdent()]:
-			case [{tok:Const(CString(s))}]:
-				print('"$s"');
+			case [{tok:Const(CString(s)), pos:p}]:
+				printString(s, p);
 		}
 		if (cfg.space_before_structure_colon) {
 			space();
@@ -721,7 +728,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	// TODO: this whole part is really awkward
 	function parseBlockOrStructure() {
 		switch stream {
-			case [{tok:fieldToken = Const(CIdent(_) | CString(_))}]:
+			case [{tok:fieldToken = Const(CIdent(_) | CString(_)), pos:p}]:
 				switch stream {
 					case [{tok:DblDot}]:
 						// structure
@@ -758,7 +765,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 							case Const(CIdent(s)):
 								print(s);
 							case Const(CString(s)):
-								print('"$s"');
+								printString(s, p);
 							case _:
 								throw false;
 						}
@@ -777,14 +784,14 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				expect(BrClose);
 		}
 	}
-	
+
 	function parseExpr() {
 		parseMeta();
 		switch stream {
 			case [{tok:Const(CInt(s) | CFloat(s) | CIdent(s))}]:
 				print(s);
-			case [{tok:Const(CString(s))}]:
-				print('"$s"');
+			case [{tok:Const(CString(s)), pos:p}]:
+				printString(s, p);
 			case [{tok:Const(CRegexp(p, o))}]:
 				print('~/$p/$o');
 			case [{tok:Kwd(KwdTrue)}]:
