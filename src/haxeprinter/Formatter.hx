@@ -714,6 +714,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	}
 	
 	function parseBlockElement() {
+		newline();
 		switch stream {
 			case [{tok:Kwd(KwdVar)}]:
 				print("var ");
@@ -772,6 +773,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 						semicolon();
 						plist(parseBlockElement);
 						lessTabs();
+						newline();
 						expect(BrClose);
 				}
 			case [{tok:BrClose}]:
@@ -780,7 +782,6 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				brace(cfg.cuddle_method_braces);
 				print("{");
 				moreTabs();
-				newline();
 				plist(parseBlockElement);
 				lessTabs();
 				newline();
