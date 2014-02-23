@@ -493,7 +493,6 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				}
 				newline();
 				printModifier(modifier);
-				print("function ");
 				parseFunction();
 				semicolon();
 			case [{tok:BrClose}]:
@@ -780,7 +779,10 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				brace(cfg.cuddle_method_braces);
 				print("{");
 				moreTabs();
+				newline();
 				plist(parseBlockElement);
+				lessTabs();
+				newline();
 				expect(BrClose);
 		}
 	}
