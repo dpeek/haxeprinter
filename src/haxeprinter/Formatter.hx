@@ -82,7 +82,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				newline();
 				peek(0);
 			case Comment(s):
-				print('/*$s*');
+				print('/*$s*/');
 				junk();
 				var l1 = new hxparse.Position("", tok.pos.min, tok.pos.max).getLinePosition(input).lineMin;
 				var tok2 = super.peek(0); // cannot use this.peek here in case another comment follows
