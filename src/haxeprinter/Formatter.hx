@@ -866,6 +866,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 						parseComplexType();
 						expect(PClose);
 					case [{tok:PClose}]:
+						print(")");
 					case _:
 						unexpected();
 				}
