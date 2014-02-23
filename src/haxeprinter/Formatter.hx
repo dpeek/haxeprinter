@@ -613,6 +613,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		switch stream {
 			case [_ = parseClassFields(false)]:
 			case [ _ = psep(Comma, parseStructureTypeField, withSpace(cfg.space_between_anon_type_fields))]:
+				space();
 				expect(BrClose);
 		}
 	}
