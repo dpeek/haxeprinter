@@ -771,6 +771,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 						parseExprNext();
 						semicolon();
 						plist(parseBlockElement);
+						lessTabs();
 						expect(BrClose);
 				}
 			case [{tok:BrClose}]:
