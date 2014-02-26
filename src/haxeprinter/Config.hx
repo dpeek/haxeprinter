@@ -12,7 +12,7 @@ typedef Config = {
 	@:default(true)
 	var empty_line_before_type:Bool;
 	
-	@:default(false)
+	@:default(true)
 	var empty_line_between_fields:Bool;
 	
 	@:default(false)
@@ -49,22 +49,22 @@ typedef Config = {
 	@:default(true)
 	var space_between_function_args:Bool;
 	
-	@:default(true)
+	@:default(false)
 	var space_before_type_hint_colon:Bool;
 	
-	@:default(true)
+	@:default(false)
 	var space_after_type_hint_colon:Bool;
 	
 	@:default(true)
 	var space_around_property_assign:Bool;
 	
-	@:default(true)
+	@:default(false)
 	var space_around_function_arg_assign:Bool;
 	
-	@:default(true)
+	@:default(false)
 	var space_before_structure_colon:Bool;
 	
-	@:default(true)
+	@:default(false)
 	var space_after_structure_colon:Bool;
 
 	@:default(true)
@@ -73,16 +73,10 @@ typedef Config = {
 	@:default(true)
 	var space_between_anon_type_fields:Bool;
 	
-	// not implemented from here
-	
-	@:default(80)
+	@:default(100)
 	var maximum_line_length:Int;
-	
-	@:default(true)
-	var indent_with_tabs:Bool;
-	
-	@:default(4)
-	var tab_width:Int;
+
+	// not implemented from here
 	
 	@:default(false)
 	var print_root_package:Bool;

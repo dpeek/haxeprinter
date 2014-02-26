@@ -54,7 +54,7 @@ class Demo
 	{
 		var input = document.getElementById('input');
 		var output = document.getElementById('output');
-		output.innerHTML = StringTools.htmlEscape(format(input.innerText));
+		output.innerHTML = format(input.innerText);
 	}
 
 	static function format(source:String)
@@ -69,7 +69,7 @@ class Demo
 		} catch(e:Unexpected<Dynamic>) {
 			return '<span class="error">' +e.pos.format(input) + ": Unexpected " + e.token.tok + '</span>';
 		} catch(e:Dynamic) {
-			return '<span class="error">unknown error</span>';
+			return '<span class="error">unknown error $e</span>';
 		}
 
 		return output;
