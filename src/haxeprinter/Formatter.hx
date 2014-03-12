@@ -959,7 +959,13 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				parseExpr();
 				switch stream {
 					case [{tok:DblDot}]:
-						print(" : "); // TODO
+						if (cfg.space_before_type_hint_colon) {
+							space();
+						}
+						print(":");
+						if (cfg.space_after_type_hint_colon) {
+							space();
+						}
 						parseComplexType();
 						expect(PClose);
 					case [{tok:PClose}]:
