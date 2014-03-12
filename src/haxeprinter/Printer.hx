@@ -40,7 +40,7 @@ class Printer
 		if (style == null) style = SNormal;
 
 		lineLen += s.length;
-		#if js
+		#if (js && !noStyle)
 		var style = Std.string(style).substr(1).toLowerCase();
 		line.add('<span class="$style">$s</span>');
 		#else
