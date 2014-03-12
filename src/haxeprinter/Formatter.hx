@@ -4,124 +4,164 @@ import haxe.macro.Expr;
 import haxeparser.Data;
 import haxeparser.HaxeLexer;
 
-enum Node
+class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.ParserBuilder
 {
-	Group(nodes:Array<Node>);
-	Token(s:String, style:Style);
-}
-
-class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.ParserBuilder {
-
-	var root:Node;
-	var stack:Array<Array<Node>>;
-	var group:Array<Node>;
-
-	function add(s:String, style:Style)
-	{
-		group.push(Token(s, style));
-	}
-
-	function start()
-	{
-		var nodes = [];
-		group.push(Group(nodes));
-		stack.unshift(nodes);
-	}
-
-	function end()
-	{
-		if (stack.length == 0) throw 'stack is empty';
-		stack.shift();
-		group = stack[0];
-	}
-
-
-	
 	var input:byte.ByteData;
 	var buf = new StringBuf();
 	var cfg:Config;
 	var lastChar = null;
 	var tabs:String = "";
 
+	var doc = null;
 	var col = 0;
 	var lineBuf = new StringBuf();
 	var lineLen = 0;
 	var hasNewlined = false;
 
+	var stack:Array<StringBuf>;
+
 	public function new(input:byte.ByteData, config:Config, sourceName:String) {
 		super(new HaxeLexer(input, sourceName), HaxeLexer.tok);
 		this.input = input;
 		this.cfg = config;
-
-		this.group = [];
-		this.root = Group(this.group);
+		stack = [buf];
 	}
 	
-	public function getContent() {
+	public function getContent()
+	{
 		parseFile();
-		newline();
-		return buf.toString();
+		var output = StringTools.trim(buf.toString());
+		if (cfg.empty_line_at_end_of_file) output += '\n';
+		return output;
 	}
 	
+	function startGroup()
+	{
+		lastChar = null;
+		buf = new StringBuf();
+		stack.unshift(buf);
+	}
+
+	function endGroup()
+	{
+		if (stack.length == 1) throw 'no group to end';
+		var group = stack.shift().toString();
+		buf = stack[0];
+		return StringTools.trim(group);
+	}
+
+	function endBlock()
+	{
+		var group = endGroup();
+		lessTabs();
+
+		if (group.length == 0) buf.add(' {}');
+		else if (cfg.cuddle_type_braces) buf.add(' {\n$tabs\n$group\n$tabs}');
+		else buf.add('\n$tabs{\n$tabs\t$group\n$tabs}');
+	}
+
 	// printing
 	
-	function print(s:String, ?style:Style) {
-		if (lineBuf.length == 0)
+	function addWordOrBlock(s:String, style:Style)
+	{
+		if (s.indexOf('\n') > -1 || lastChar == '\n') addBlock(s, style);
+		else addWord(s, style);
+	}
+
+	function addWord(s:String, style:Style)
+	{
+		space();
+		print(s, style);
+	}
+
+	function addBlock(s:String, style:Style)
+	{
+		newline();
+		print(s, style);
+		newline();
+	}
+
+	function print(s:String, ?style:Style)
+	{
+		if (doc != null)
 		{
-			lineLen += tabs.length * 4;
-			lineBuf.add(tabs);
+			var d = doc;
+			doc = null;
+			addWordOrBlock('/*$d*/', SComment);
 		}
 
+		if (lastChar == '\n' || buf.length == 0) buf.add(tabs);
+		// buf.add(s);
+		lastChar = s.charAt(s.length - 1);
+
 		#if js
-		var escaped = StringTools.htmlEscape(s);
+		// var escaped = StringTools.htmlEscape(s);
 		if (style == null)
 		{
-			lineBuf.add(escaped);
+			buf.add(s);
 		}
 		else
 		{
 			var style = Std.string(style).substr(1).toLowerCase();
-			lineBuf.add('<span class="$style">$escaped</span>');
+			buf.add('<span class="$style">$s</span>');
 		}
 		#else
-		lineBuf.add(s);
+		buf.add(s);
 		#end
 
-		lineLen += s.length;
-		lastChar = s.charAt(s.length - 1);
+
+		// if (lineBuf.length == 0)
+		// {
+		// 	lineLen += tabs.length * 4;
+		// 	lineBuf.add(tabs);
+		// }
+
+		// #if js
+		// var escaped = StringTools.htmlEscape(s);
+		// if (style == null)
+		// {
+		// 	lineBuf.add(escaped);
+		// }
+		// else
+		// {
+		// 	var style = Std.string(style).substr(1).toLowerCase();
+		// 	lineBuf.add('<span class="$style">$escaped</span>');
+		// }
+		// #else
+		// lineBuf.add(s);
+		// #end
+
+		// lineLen += s.length;
 	}
 
 	function breakPoint(force:Bool=false)
 	{
-		if (col > 0)
-		{
-			if (force || col + lineLen > cfg.maximum_line_length)
-			{
-				col = 0;
-				buf.add('\n$tabs\t');
-			}
-			else if (lineLen > 0)
-			{
-				buf.add(' ');
-			}
-		}
+		// if (col > 0)
+		// {
+		// 	if (force || col + lineLen > cfg.maximum_line_length)
+		// 	{
+		// 		col = 0;
+		// 		buf.add('\n$tabs\t');
+		// 	}
+		// 	else if (lineLen > 0)
+		// 	{
+		// 		buf.add(' ');
+		// 	}
+		// }
 		
-		col += lineLen;
-		buf.add(lineBuf.toString());
-		lineBuf = new StringBuf();
-		lineLen = 0;
+		// col += lineLen;
+		// buf.add(lineBuf.toString());
+		// lineBuf = new StringBuf();
+		// lineLen = 0;
 	}
 	
-	function tab() {
-		print(tabs);
-	}
-	
-	function newline() {
-		hasNewlined = true;
-		buf.add(lineBuf.toString() + '\n');
-		lineBuf = new StringBuf();
-		col = 0;
-		lineLen = 0;
+	function newline(force=false)
+	{
+		if (force || (lastChar != '\n' && lastChar != null))
+		{
+			buf.add('\n');
+			lastChar = '\n';
+		}
 	}
 	
 	function moreTabs() {
@@ -132,11 +172,14 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		tabs = tabs.substr(1);
 	}
 	
-	function space() {
-		if (lastChar != " ") print(" ");
+	function space()
+	{
+		if (lastChar == ' ' || lastChar == '\t' || lastChar == '\n' || lastChar == null) return;
+		print(' ');
 	}
 	
-	function brace(cuddle:Bool) {
+	function brace(cuddle:Bool)
+	{
 		if (cuddle) {
 			space();
 		} else {
@@ -155,21 +198,13 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		var tok = super.peek(n);
 		return switch(tok.tok) {
 			case CommentLine(s):
-				print('//$s', SComment);
-				junk();
+				addWord('//$s', SComment);
 				newline();
+				junk();
 				peek(0);
 			case Comment(s):
-				print('/*$s*/', SComment);
+				doc = s;
 				junk();
-				var l1 = new hxparse.Position("", tok.pos.min, tok.pos.max).getLinePosition(input).lineMin;
-				var tok2 = super.peek(0); // cannot use this.peek here in case another comment follows
-				var l2 = new hxparse.Position("", tok2.pos.min, tok2.pos.max).getLinePosition(input).lineMin;
-				if (l1 != l2) {
-					newline();
-				} else {
-					print(" ");
-				}
 				peek(0);
 			case Sharp("error"):
 				junk();
@@ -184,20 +219,22 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				}
 				peek(0);
 			case Sharp(s = "if" | "elseif"):
-				hasNewlined = false;
-				print('#$s', SMacro);
-				print(" ");
 				junk();
+				print('#$s', SMacro);
+				space();
 				skipMacroCond();
-				if (hasNewlined) newline();
-				else space();
+				startGroup();
 				peek(0);
 			case Sharp(s = "end" | "else"):
-				hasNewlined = false;
-				print('#$s', SMacro);
 				junk();
-				if (hasNewlined) newline();
-				else space();
+				var group = endGroup();
+				if (group.indexOf('\n') > -1) newline();
+				else print(" ");
+				print(group);
+				if (group.indexOf('\n') > -1) newline();
+				else print(" ");
+				print('#$s', SMacro);
+				if (group.indexOf('\n') > -1) newline();
 				peek(0);
 			case Sharp(s):
 				print('#$s', SMacro);
@@ -372,31 +409,32 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	
 	// type declaration parsing
 	
-	function parseFile() {
-		switch (peek(0))
-		{
-			case {tok:Kwd(KwdPackage | KwdImport | KwdUsing)}:
-			case _:
-				newline();
-				if (cfg.empty_line_before_type) newline();
-		}
+	function parseFile()
+	{
+		peek(0);
+		// switch (super.peek(0).tok) {
+		// 	case CommentLine(s):
+		// 		doc = s;
+		// 		junk();
+		// 	case _:
+		// }
 
+		startGroup();
 		parseMeta();
 		parseModifier();
+		var meta = endGroup();
 
 		switch stream {
 			case [{tok:Kwd(KwdPackage)}]:
+				newline();
 				print("package", SDecl);
 				if (peek(0).tok == Semicolon) {
 					junk();
 					print(";");
 				} else {
-					print(" ");
+					space();
 					parseDotPath();
 					expect(Semicolon);
-				}
-				if (cfg.empty_line_after_package) {
-					newline();
 				}
 			case [{tok:Kwd(kwd = KwdImport | KwdUsing)}]:
 				newline();
@@ -417,63 +455,67 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 					case _:
 				}
 				semicolon();
-				if (cfg.empty_line_after_import) {
-					newline();
-				}
 			case [{tok:Kwd(kwd = KwdClass | KwdInterface)}]:
+				newline();
+				if (cfg.empty_line_before_type) newline(true);
+				if (meta.length > 0) print(meta + ' ');
 				print(kwd == KwdClass ? "class" : "interface", SDecl);
-				print(" ");
+
+				space();
 				parseAnyIdent(SType);
 				popt(parseTypeParameters);
 				parseHeritance();
-				brace(cfg.cuddle_type_braces);
-				expect(BrOpen);
+
+				expect(BrOpen, false);
+				startGroup();
 				moreTabs();
 				parseClassFields(false);
+				endBlock();
 			case [{tok:Kwd(KwdEnum)}]:
+				newline();
+				if (cfg.empty_line_before_type) newline(true);
+				if (meta.length > 0) print(meta + ' ');
 				print("enum", SDecl);
-				print(" ");
+				space();
 				parseAnyIdent(SType);
 				popt(parseTypeParameters);
-				brace(cfg.cuddle_type_braces);
-				expect(BrOpen);
+
+				expect(BrOpen, false);
+				startGroup();
 				moreTabs();
 				parseEnumFields(false);
+				endBlock();
+
 			case [{tok:Kwd(KwdTypedef)}]:
-				// newline();
-				// if (cfg.empty_line_before_type) {
-				// 	newline();
-				// }
-				// parseModifier();
+				newline();
+				if (cfg.empty_line_before_type) newline(true);
+				if (meta.length > 0) print(meta + ' ');
 				print("typedef", SDecl);
-				print(" ");
+				space();
 				parseAnyIdent(SType);
 				popt(parseTypeParameters);
-				if (cfg.space_around_typedef_assign) {
-					space();
-				}
+				if (cfg.space_around_typedef_assign) space();
 				expect(Binop(OpAssign));
-				if (cfg.space_around_typedef_assign) {
-					space();
-				}
+				if (cfg.space_around_typedef_assign) space();
+				
 				parseComplexType();
 				semicolon();
 			case [{tok:Kwd(KwdAbstract)}]:
-				// newline();
-				// if (cfg.empty_line_before_type) {
-				// 	newline();
-				// }
-				// parseModifier();
+				newline();
+				if (cfg.empty_line_before_type) newline(true);
+				if (meta.length > 0) print(meta + ' ');
 				print("abstract", SDecl);
 				print(" ");
 				parseAnyIdent(SType);
 				popt(parseTypeParameters);
 				popt(parseAbstractThis);
 				popt(parseAbstractRelations);
-				brace(cfg.cuddle_type_braces);
-				expect(BrOpen);
+
+				expect(BrOpen, false);
+				startGroup();
 				moreTabs();
-				parseClassFields(false);
+				parseEnumFields(false);
+				endBlock();
 			case [{tok:Eof}]:
 				return;
 		}
@@ -514,13 +556,13 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		while(true) {
 			switch stream {
 				case [{tok:Kwd(KwdExtends)}]:
-					breakPoint();
+					space();
 					print("extends", SDecl);
 					space();
 					parseComplexType();
 					breakPoint(cfg.extends_on_newline);
 				case [{tok:Kwd(KwdImplements)}]:
-					breakPoint();
+					space();
 					print("implements", SDecl);
 					space();
 					parseComplexType();
@@ -532,32 +574,26 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	}
 	
 	function parseClassFields(hadField:Bool) {
-		if (hadField && cfg.empty_line_between_fields) {
-			newline();
-		}
-		newline();
 		parseMeta();
 		parseModifier();
 		switch stream {
 			case [{tok:Kwd(KwdVar)}]:
 				print("var", SKwd);
-				print(" ");
+				space();
 				parseAnyIdent();
 				popt(parsePropertyAccessors);
 				popt(parseTypeHint);
 				popt(parseAssignment.bind(cfg.space_around_property_assign, cfg.space_around_property_assign));
 				semicolon();
+				newline();
+				if (cfg.empty_line_between_fields) newline(true);
 			case [{tok:Kwd(KwdFunction)}]:
 				parseFunction();
 				semicolon();
+				newline();
+				if (cfg.empty_line_between_fields) newline(true);
 			case [{tok:BrClose}]:
 				lessTabs();
-				// if (hadField) {
-				// 	newline();
-				// } else {
-				// 	space();
-				// }
-				print("}");
 				return;
 		}
 		parseClassFields(true);
@@ -580,10 +616,8 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 			case [{tok:POpen}]:
 				print("(");
 				parsePropertyIdent();
-				if (cfg.space_between_property_get_set) {
-					print(" ");
-				}
 				expect(Comma);
+				if (cfg.space_between_property_get_set) print(" ");
 				parsePropertyIdent();
 				expect(PClose);
 		}
@@ -596,18 +630,13 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		parseMeta();
 		switch stream {
 			case [{tok: BrClose}]:
-				lessTabs();
-				if (hadField) {
-					newline();
-				}
-				print("}");
 				return;
 			case _:
 		}
-		if (cfg.empty_line_between_enum_constructors) {
-			newline();
-		}
-		newline();
+		// if (cfg.empty_line_between_enum_constructors) {
+		// 	newline();
+		// }
+		// newline();
 		parseAnyIdent(SType);
 		popt(parseTypeParameters);
 		switch stream {
@@ -1136,11 +1165,11 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		}
 	}
 	
-	function expect(tok:TokenDef) {
+	function expect(tok:TokenDef, ?printTok=true) {
 		if (!Type.enumEq(peek(0).tok, tok)) {
 			throw (curPos().format(input)) + ':Expected $tok but found ${peek(0)}';
 		}
-		print(TokenDefPrinter.print(tok));
+		if (printTok) print(TokenDefPrinter.print(tok));
 		junk();
 	}
 	

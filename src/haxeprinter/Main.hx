@@ -46,7 +46,7 @@ class Main
 	{
 		var source = sys.io.File.getContent(path);
 		var input = byte.ByteData.ofString(source);
-		var formatter = new haxeprinter.Formatter(input, haxe.Json.parse(haxe.Resource.getString('config')), path);
+		var formatter = new haxeprinter.Formatter(input, haxe.Json.parse(haxe.Resource.getString('config-default')), path);
 		
 		var output = try {
 			formatter.getContent();

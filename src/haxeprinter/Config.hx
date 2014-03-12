@@ -4,10 +4,10 @@ typedef Config = {
 	// new lines
 	
 	@:default(true)
-	var empty_line_after_package:Bool;
-	
+	var empty_line_at_end_of_file:Bool;
+
 	@:default(false)
-	var empty_line_after_import:Bool;
+	var empty_line_before_imports:Bool;
 	
 	@:default(true)
 	var empty_line_before_type:Bool;
