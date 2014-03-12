@@ -23,3 +23,9 @@
 --next
 
 -cmd neko bin/format.n test
+
+--next
+
+-cp unit
+-main Test
+--interp
