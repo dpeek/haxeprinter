@@ -1,98 +1,98 @@
 package haxeprinter;
 
-typedef Config = {
-	// new lines
-	
+typedef Config =
+{
+	@:default(true)
+	var condense_multiple_spaces:Bool;
+
+	@:default(true)
+	var condense_multiple_empty_lines:Bool;
+
 	@:default(true)
 	var empty_line_at_end_of_file:Bool;
 
+	// space
+
+	// before parenthesis
+
 	@:default(false)
-	var empty_line_before_imports:Bool;
-	
-	@:default(true)
-	var empty_line_before_type:Bool;
-	
-	@:default(true)
-	var empty_line_between_fields:Bool;
-	
+	var space_before_method_declaration_parenthesis:Bool;
+
 	@:default(false)
-	var empty_line_between_enum_constructors:Bool;
-	
-	@:default(false)
-	var extends_on_newline:Bool;
-	
-	@:default(false)
-	var implements_on_newline:Bool;
-	
-	@:default(["override", "public", "private", "static", "extern", "dynamic", "inline", "macro"])
-	var modifier_order:Array<String>;
-	
-	// cuddly braces
-	
-	@:default(false)
-	var cuddle_type_braces:Bool;
-	
-	@:default(false)
-	var cuddle_method_braces:Bool;
-	
-	// spaces
-	
-	@:default(true)
-	var space_between_type_params:Bool;
-	
-	@:default(true)
-	var space_between_type_param_constraints:Bool;
-	
-	@:default(true)
-	var space_between_property_get_set:Bool;
-	
-	@:default(true)
-	var space_between_function_args:Bool;
-	
-	@:default(false)
-	var space_before_type_hint_colon:Bool;
-	
-	@:default(false)
-	var space_after_type_hint_colon:Bool;
-	
-	@:default(true)
-	var space_around_property_assign:Bool;
-	
-	@:default(false)
-	var space_around_function_arg_assign:Bool;
-	
-	@:default(false)
-	var space_before_structure_colon:Bool;
-	
-	@:default(false)
-	var space_after_structure_colon:Bool;
+	var space_before_method_call_parenthesis:Bool;
 
 	@:default(true)
-	var space_around_typedef_assign:Bool;
-	
-	@:default(true)
-	var space_between_anon_type_fields:Bool;
-	
-	@:default(100)
-	var maximum_line_length:Int;
+	var space_before_if_parenthesis:Bool;
 
-	// not implemented from here
-	
-	@:default(false)
-	var print_root_package:Bool;
-	
-	@:default(false)
-	var inline_empty_braces:Bool;
-	
-	@:default(false)
-	var function_arg_on_newline:Bool;
-	
-	@:default(false)
-	var remove_private_field_modifier:Bool;
-	
-	@:default(false)
-	var empty_line_between_typedef_fields:Bool; // TODO: bad name
-	
-	@:default(false)
-	var space_between_enum_constructor_args:Bool;
+	@:default(true)
+	var space_before_for_parenthesis:Bool;
+
+	@:default(true)
+	var space_before_while_parenthesis:Bool;
+
+	@:default(true)
+	var space_before_switch_parenthesis:Bool;
+
+	@:default(true)
+	var space_before_catch_parenthesis:Bool;
+
+	// around operators
+
+	@:default(true)
+	var space_around_assignment_operators:Bool;
+
+	@:default(true)
+	var space_around_logical_operators:Bool;
+
+	@:default(true)
+	var space_around_equality_operators:Bool;
+
+	@:default(true)
+	var space_around_relational_operators:Bool;
+
+	@:default(true)
+	var space_around_additive_operators:Bool;
+
+	@:default(true)
+	var space_around_multiplicative_operators:Bool;
+
+	@:default(true)
+	var space_around_unary_operators:Bool;
+
+	// before left brace
+
+	@:default(true)
+	var space_before_method_left_brace:Bool;
+
+	@:default(true)
+	var space_before_if_left_brace:Bool;
+
+	@:default(true)
+	var space_before_else_left_brace:Bool;
+
+	@:default(true)
+	var space_before_for_left_brace:Bool;
+
+	@:default(true)
+	var space_before_while_left_brace:Bool;
+
+	@:default(true)
+	var space_before_switch_left_brace:Bool;
+
+	@:default(true)
+	var space_before_try_left_brace:Bool;
+
+	@:default(true)
+	var space_before_catch_left_brace:Bool;
+
+	// before keywords
+
+	@:default(true)
+	var space_before_else_keyword:Bool;
+
+	@:default(true)
+	var space_before_while_keyword:Bool;
+
+	@:default(true)
+	var space_before_catch_keyword:Bool;
 }

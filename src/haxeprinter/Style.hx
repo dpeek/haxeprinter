@@ -2,7 +2,6 @@ package haxeprinter;
 
 enum Style
 {
-	SNormal;
 	SDecl;
 	SOperator;
 	SConst;

@@ -24,8 +24,8 @@
 
 -cmd neko bin/format.n test
 
---next
+# --next
 
--cp unit
--main Test
---interp
+# -cp unit
+# -main Test
+# --interp
