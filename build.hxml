@@ -27,6 +27,6 @@
 
 # --next
 
-# -cp unit
-# -main Test
-# --interp
+-cp unit
+-main Test
+--interp

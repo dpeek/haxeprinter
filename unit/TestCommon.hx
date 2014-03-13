@@ -4,24 +4,26 @@ import haxeprinter.Config;
 @:access(haxeprinter.Formatter)
 class TestCommon extends haxe.unit.TestCase {
 		
-	function exprEq(sourceCode:String, config:Config, expectedCode:String, ?p:haxe.PosInfos) {
-		var s = parseExpr(sourceCode, config, p);
+	var currentConfig:Config;
+	
+	function exprEq(sourceCode:String, expectedCode:String, ?p:haxe.PosInfos) {
+		var s = parseExpr(sourceCode, p);
 		assertEquals(expectedCode, s, p);
 	}
 	
-	function fileEq(sourceCode:String, config:Config, expectedCode:String, ?p:haxe.PosInfos) {
-		var s = parseFile(sourceCode, config, p);
+	function fileEq(sourceCode:String, expectedCode:String, ?p:haxe.PosInfos) {
+		var s = parseFile(sourceCode, p);
 		assertEquals(expectedCode, s, p);
 	}
 	
-	static function parseExpr(inputCode:String, config:Config, ?p:haxe.PosInfos) {
-		var parser = new Formatter(byte.ByteData.ofString(inputCode), config, '${p.methodName}:${p.lineNumber}');
+	function parseExpr(inputCode:String, ?p:haxe.PosInfos) {
+		var parser = new Formatter(byte.ByteData.ofString(inputCode), currentConfig, '${p.methodName}:${p.lineNumber}');
 		parser.parseExpr();
 		return parser.getContent();
 	}
 	
-	static function parseFile(inputCode:String, config:Config, ?p:haxe.PosInfos) {
-		var parser = new Formatter(byte.ByteData.ofString(inputCode), config, '${p.methodName}:${p.lineNumber}');
+	function parseFile(inputCode:String, ?p:haxe.PosInfos) {
+		var parser = new Formatter(byte.ByteData.ofString(inputCode), currentConfig, '${p.methodName}:${p.lineNumber}');
 		parser.parseFile();
 		return parser.getContent();
 	}

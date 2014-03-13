@@ -26,7 +26,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		{
 			before = switch (token.tok)
 			{
-				case Dot | POpen | PClose | Const(_) | Const(CIdent(_)) | Kwd(KwdFalse) | 
+				case Dot | POpen | PClose | Const(_) | Const(CIdent(_)) | Kwd(KwdFalse) |
 					Kwd(KwdTrue) | Kwd(KwdNull): SNone;
 				case Semicolon | DblDot: SNone;
 				default: SIgnore;
@@ -895,7 +895,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 			case [{tok:Binop(op)}]:
 				var around = switch (op)
 				{
-					case OpAssignOp(_):
+					case OpAssign | OpAssignOp(_):
 						spaceIf(cfg.space_around_assignment_operators);
 					case OpBoolAnd | OpBoolOr:
 						spaceIf(cfg.space_around_logical_operators);
