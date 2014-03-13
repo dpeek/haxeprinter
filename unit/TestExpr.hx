@@ -21,9 +21,9 @@ class TestExpr extends TestCommon {
 	
 	function test_space_before_method_call_parenthesis() {
 		test(
-			["a()", "a(b)", "a(b,c)"],
+			["a()", "a(b)", "a(b, c)"],
 			space_before_method_call_parenthesis = true,
-			["a ()", "a (b)", "a (b,c)"]
+			["a ()", "a (b)", "a (b, c)"]
 		);
 	}
 	
@@ -139,13 +139,13 @@ class TestExpr extends TestCommon {
 		);
 	}
 	
-	//function test_space_before_for_left_brace() {
-		//test(
-			//"for (a) {}",
-			//space_before_for_left_brace = false,
-			//"for (a){}"
-		//);
-	//}
+	function test_space_before_for_left_brace() {
+		test(
+			"for (a) {}",
+			space_before_for_left_brace = false,
+			"for (a){}"
+		);
+	}
 	
 	function test_space_before_while_left_brace() {
 		test(
@@ -155,21 +155,21 @@ class TestExpr extends TestCommon {
 		);
 	}
 	
-	//function test_space_before_switch_left_brace() {
-		//test(
-			//"switch (a) {}",
-			//space_before_switch_left_brace = false,
-			//"switch (a){}"
-		//);
-	//}
+	function test_space_before_switch_left_brace() {
+		test(
+			"switch (a) {}",
+			space_before_switch_left_brace = false,
+			"switch (a){}"
+		);
+	}
 	
-	//function test_space_before_try_left_brace() {
-		//test(
-			//"try {} catch(a:B) {}",
-			//space_before_try_left_brace = false,
-			//"try{} catch(a:B) {}"
-		//);
-	//}
+	function test_space_before_try_left_brace() {
+		test(
+			"try {} catch (a:B) {}",
+			space_before_try_left_brace = false,
+			"try{} catch (a:B) {}"
+		);
+	}
 	
 	function test_space_before_catch_left_brace() {
 		test(
@@ -179,35 +179,35 @@ class TestExpr extends TestCommon {
 		);
 	}
 	
-	//function test_space_before_else_keyword() {
-		//test(
-			//["if (a) {} else {}", "if (a)b else {}"],
-			//space_before_else_keyword = false,
-			//["if (a) {}else {}", "if (a)b else {}"]
-		//);
-	//}
+	function test_space_before_else_keyword() {
+		test(
+			["if (a) {} else {}", "if (a)b else {}"],
+			space_before_else_keyword = false,
+			["if (a) {}else {}", "if (a)b else {}"]
+		);
+	}
 	
-	//function test_space_before_while_keyword() {
-		//test(
-			//["do {} while (a)", "do a while (b)"],
-			//space_before_while_keyword = false,
-			//["do {}while (a)", "do a while (b)"]
-		//);
-	//}
+	function test_space_before_while_keyword() {
+		test(
+			["do {} while (a)", "do a while (b)"],
+			space_before_while_keyword = false,
+			["do {}while (a)", "do a while (b)"]
+		);
+	}
 	
-	//function test_space_before_catch_keyword() {
-		//test(
-			//["try {} catch (a:B) {}", "try a catch (b:B) {}"],
-			//space_before_catch_keyword = false,
-			//["try {}catch (b:B) {}", "try a catch (b:B) {}"]
-		//);
-	//}
+	function test_space_before_catch_keyword() {
+		test(
+			["try {} catch (b:B) {}", "try a catch (b:B) {}"],
+			space_before_catch_keyword = false,
+			["try {}catch (b:B) {}", "try a catch (b:B) {}"]
+		);
+	}
 	
 	function test_space_within_method_call_parenthesis() {
 		test(
-			["a()", "a(b)", "a(b,c)"],
+			["a()", "a(b)", "a(b, c)"],
 			space_within_method_call_parenthesis = true,
-			["a( )", "a( b )", "a( b,c )"]
+			["a( )", "a( b )", "a( b, c )"]
 		);
 	}
 	
@@ -235,29 +235,29 @@ class TestExpr extends TestCommon {
 		);
 	}
 	
-	//function test_space_within_while_parenthesis() {
-		//test(
-			//["while (a) {}", "do {} while (a)"],
-			//space_within_while_parenthesis = true,
-			//["while ( a ) {}", "do {} while ( a )"]
-		//);
-	//}
+	function test_space_within_while_parenthesis() {
+		test(
+			["while (a) {}", "do {} while (a)"],
+			space_within_while_parenthesis = true,
+			["while ( a ) {}", "do {} while ( a )"]
+		);
+	}
 	
-	//function test_space_within_switch_parenthesis() {
-		//test(
-			//"switch (a) {}",
-			//space_within_switch_parenthesis = true,
-			//"switch ( a ) {}"
-		//);
-	//}
+	function test_space_within_switch_parenthesis() {
+		test(
+			"switch (a) {}",
+			space_within_switch_parenthesis = true,
+			"switch ( a ) {}"
+		);
+	}
 	
-	//function test_space_within_catch_parenthesis() {
-		//test(
-			//"try {} catch(a:B) {}",
-			//space_within_catch_parenthesis = true,
-			//"try {} catch( a:B ) {}"
-		//);
-	//}
+	function test_space_within_catch_parenthesis() {
+		test(
+			"try {} catch (a:B) {}",
+			space_within_catch_parenthesis = true,
+			"try {} catch ( a:B ) {}"
+		);
+	}
 	
 	function test_space_in_ternary() {
 		test(
@@ -313,13 +313,13 @@ class TestExpr extends TestCommon {
 		);
 	}
 	
-	//function test_space_between_call_arguments() {
-		//test(
-			//["a()", "a(b)", "a(b, c)"],
-			//space_between_call_arguments = false,
-			//["a()", "a(b)", "a(b,c)"]
-		//);
-	//}
+	function test_space_between_call_arguments() {
+		test(
+			["a()", "a(b)", "a(b, c)"],
+			space_between_call_arguments = false,
+			["a()", "a(b)", "a(b,c)"]
+		);
+	}
 	
 	function test_space_between_type_constraints() {
 		test(
