@@ -143,4 +143,22 @@ typedef Config =
 
 	@:default(false)
 	var space_after_type_hint_colon:Bool;
+
+	@:default(true)
+	var space_between_type_parameters:Bool;
+
+	@:default(true)
+	var space_between_function_arguments:Bool;
+
+	@:default(true)
+	var space_between_call_arguments:Bool;
+
+	@:default(true)
+	var space_between_enum_arguments:Bool;
+
+	@:default(true)
+	var space_between_type_constraints:Bool;
+
+	@:default(true)
+	var space_between_var_declarations:Bool;
 }
