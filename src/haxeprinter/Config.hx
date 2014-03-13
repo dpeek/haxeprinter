@@ -56,7 +56,7 @@ typedef Config =
 	@:default(true)
 	var space_around_multiplicative_operators:Bool;
 
-	@:default(true)
+	@:default(false)
 	var space_around_unary_operators:Bool;
 
 	// before left brace

@@ -37,6 +37,8 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		if (cfg.condense_multiple_spaces) space = ~/ +/.replace(space, ' ');
 		if (cfg.condense_multiple_empty_lines) space = ~/\n{3,}/.replace(space, '\n\n');
 
+		space = ~/(^|\n)[\t ]{2,}/.replace(space, '$$1$tabs');
+
 		var newline = space.indexOf('\n') > -1;
 		space = switch (before)
 		{
@@ -252,7 +254,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		while(true) {
 			switch stream {
 				case [{tok:Kwd(k = KwdStatic | KwdPublic | KwdPrivate | KwdExtern | KwdInline | KwdMacro | KwdDynamic | KwdOverride)}]:
-					addLast(SKwd);
+					addLast(SKwd, SSpace);
 				case _:
 					return;
 			}
@@ -334,9 +336,10 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				expect(BrOpen);
 				moreTabs();
 				parseClassFields(false);
+				
 			case [{tok:Kwd(KwdEnum)}]:
 				addLast(SDecl);
-				parseAnyIdent(SType);
+				parseAnyIdent(SType, SSpace);
 				popt(parseTypeParameters);
 
 				expect(BrOpen);
@@ -399,14 +402,10 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	function parseHeritance() {
 		while(true) {
 			switch stream {
-				case [{tok:Kwd(KwdExtends)}]:
-					addLast(SDecl);
+				case [{tok:Kwd(KwdExtends | KwdImplements)}]:
+					addLast(SDecl, SSpace, SSpace);
 					parseComplexType();
-				case [{tok:Kwd(KwdImplements)}]:
-					addLast(SDecl);
-					parseComplexType();
-				case _:
-					break;
+				case _: break;
 			}
 		}
 	}
@@ -665,8 +664,8 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				}
 			case [{tok:BrClose}]:
 				addLast();
+				lessTabs();
 			case _:
-				// moreTabs();
 				plist(parseBlockElement);
 				lessTabs();
 				expect(BrClose);
@@ -877,14 +876,17 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				parseAnyIdent();
 				parseExprNext();
 			case [{tok:Binop(OpGt)}]:
-				addLast();
-				while(true) {
+				var toks = [last];
+				while (true) {
 					switch stream {
 						case [{tok:Binop(OpGt)}]:
-							addLast();
+							toks.push(last);
 						case [{tok:Binop(OpAssign)}]:
-							addLast();
+							toks.push(last);
 						case _:
+							var space = spaceIf(toks.length < 3 ? cfg.space_around_relational_operators : cfg.space_around_assignment_operators);
+							for (i in 0...toks.length)
+								add(toks[i], null, i == 0 ? space : null, i == toks.length - 1 ? space : null);
 							parseExpr();
 							parseExprNext();
 							break;
