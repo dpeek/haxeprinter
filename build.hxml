@@ -2,6 +2,7 @@
 
 --next
 
+-D keep-whitespace
 -lib hxparse
 -lib haxeparser
 -resource res/config.json@config
