@@ -64,4 +64,30 @@ class TestFileMacro {
 		}).fields[0];
 		return field;
 	}
+	
+	macro static public function test(eSubjects:ExprOf<Array<String>>, el:Array<Expr>) {
+		var subjects = switch (eSubjects.expr) {
+			case EArrayDecl(el): el;
+			case _: [eSubjects];
+		}
+		var ret = [];
+		el.unshift(eSubjects);
+		for (e in el) {
+			switch (e) {
+				case macro $a{el}:
+					if (el.length != subjects.length) {
+						Context.error("Invalid array length, should be " +subjects.length, e.pos);
+					}
+					for (i in 0...subjects.length) {
+						ret.push(macro exprEq($e{subjects[i]}, $e{el[i]}));
+					}
+				case macro $i{lhs} = $rhs:
+					ret.push(macro currentConfig.$lhs = $rhs);
+				case _:
+					ret.push(macro exprEq($e{subjects[0]}, $e));
+			}
+		}
+		var e = macro $b{ret};
+		return e;
+	}
 }
