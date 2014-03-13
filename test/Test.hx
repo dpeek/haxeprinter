@@ -30,6 +30,8 @@ extern #if js private #end class MyClass extends SuperClass implements Interface
 	{
 		var foo = 10;
 
+		var bar:Foo -> Int -> Void;
+		
 		// things being done
 		function inlineFunc(){}
 

@@ -95,4 +95,52 @@ typedef Config =
 
 	@:default(true)
 	var space_before_catch_keyword:Bool;
+
+	// within
+
+	@:default(false)
+	var space_within_method_call_parenthesis:Bool;
+
+	@:default(false)
+	var space_within_method_declaration_parenthesis:Bool;
+
+	@:default(false)
+	var space_within_if_parenthesis:Bool;
+
+	@:default(false)
+	var space_within_for_parenthesis:Bool;
+
+	@:default(false)
+	var space_within_while_parenthesis:Bool;
+
+	@:default(false)
+	var space_within_switch_parenthesis:Bool;
+
+	@:default(false)
+	var space_within_catch_parenthesis:Bool;
+
+	// in ternary
+
+	@:default(false)
+	var space_in_ternary_before_question:Bool;
+
+	@:default(false)
+	var space_in_ternary_after_question:Bool;
+
+	@:default(false)
+	var space_in_ternary_before_colon:Bool;
+
+	@:default(false)
+	var space_in_ternary_after_colon:Bool;
+
+	// other
+
+	@:default(true)
+	var space_around_arrow:Bool;
+
+	@:default(false)
+	var space_before_type_hint_colon:Bool;
+
+	@:default(false)
+	var space_after_type_hint_colon:Bool;
 }
