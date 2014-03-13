@@ -6,6 +6,17 @@ function $extend(from, fields) {
 	if( fields.toString !== Object.prototype.toString ) proto.toString = fields.toString;
 	return proto;
 }
+var EReg = function(r,opt) {
+	opt = opt.split("u").join("");
+	this.r = new RegExp(r,opt);
+};
+EReg.__name__ = true;
+EReg.prototype = {
+	replace: function(s,by) {
+		return s.replace(this.r,by);
+	}
+	,__class__: EReg
+};
 var HxOverrides = function() { };
 HxOverrides.__name__ = true;
 HxOverrides.cca = function(s,index) {
@@ -120,10 +131,7 @@ var StringBuf = function() {
 };
 StringBuf.__name__ = true;
 StringBuf.prototype = {
-	toString: function() {
-		return this.b;
-	}
-	,__class__: StringBuf
+	__class__: StringBuf
 };
 var StringTools = function() { };
 StringTools.__name__ = true;
@@ -1011,6 +1019,7 @@ haxeparser.TokenDefPrinter.print = function(def) {
 	}
 };
 haxeparser.Token = function(tok,pos) {
+	this.space = "";
 	this.tok = tok;
 	this.pos = pos;
 };
@@ -1283,6 +1292,9 @@ hxparse.LexEngine.parseInner = function(pattern,i,pDepth) {
 				var r2 = hxparse.LexEngine.parseInner(pattern,i);
 				return { pattern : hxparse._LexEngine.Pattern.Choice(r,r2.pattern), pos : r2.pos};
 			} else r = hxparse.LexEngine.next(r,hxparse._LexEngine.Pattern.Match([{ min : c, max : c}]));
+			break;
+		case 46:
+			r = hxparse.LexEngine.next(r,hxparse._LexEngine.Pattern.Match(hxparse.LexEngine.ALL_CHARS));
 			break;
 		case 40:
 			var r21 = hxparse.LexEngine.parseInner(pattern,i,pDepth + 1);
@@ -1853,6 +1865,36 @@ hxparse.Parser_haxeparser_HaxeLexer_haxeparser_Token.prototype = {
 	,curPos: function() {
 		return this.stream.curPos();
 	}
+	,parseSeparated: function(separatorFunc,f) {
+		var acc = [];
+		while(true) {
+			acc.push(f());
+			if(separatorFunc(this.peek(0))) {
+				this.last = this.token.elt;
+				this.token = this.token.next;
+			} else break;
+		}
+		return acc;
+	}
+	,parseOptional: function(f) {
+		try {
+			return f();
+		} catch( e ) {
+			if( js.Boot.__instanceof(e,hxparse.NoMatch) ) {
+				return null;
+			} else throw(e);
+		}
+	}
+	,parseRepeat: function(f) {
+		var acc = [];
+		while(true) try {
+			acc.push(f());
+		} catch( e ) {
+			if( js.Boot.__instanceof(e,hxparse.NoMatch) ) {
+				return acc;
+			} else throw(e);
+		}
+	}
 	,noMatch: function() {
 		return new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
 	}
@@ -1864,66 +1906,62 @@ hxparse.Parser_haxeparser_HaxeLexer_haxeparser_Token.prototype = {
 hxparse.ParserBuilder = function() { };
 hxparse.ParserBuilder.__name__ = true;
 haxeprinter.Formatter = function(input,config,sourceName) {
-	this.hasNewlined = false;
-	this.lineLen = 0;
-	this.lineBuf = new StringBuf();
-	this.col = 0;
-	this.doc = null;
+	this.lastChar = "";
 	this.tabs = "";
-	this.lastChar = null;
 	this.buf = new StringBuf();
 	hxparse.Parser_haxeparser_HaxeLexer_haxeparser_Token.call(this,new haxeparser.HaxeLexer(input,sourceName),haxeparser.HaxeLexer.tok);
 	this.input = input;
 	this.cfg = config;
-	this.stack = [this.buf];
 };
 haxeprinter.Formatter.__name__ = true;
 haxeprinter.Formatter.__interfaces__ = [hxparse.ParserBuilder];
 haxeprinter.Formatter.__super__ = hxparse.Parser_haxeparser_HaxeLexer_haxeparser_Token;
 haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_haxeparser_Token.prototype,{
-	getContent: function() {
-		this.parseFile();
-		var output = StringTools.trim(this.buf.b);
-		if(this.cfg.empty_line_at_end_of_file) output += "\n";
-		return output;
-	}
-	,startGroup: function() {
-		this.lastChar = null;
-		this.buf = new StringBuf();
-		this.stack.unshift(this.buf);
-	}
-	,endGroup: function() {
-		if(this.stack.length == 1) throw "no group to end";
-		var group = this.stack.shift().toString();
-		this.buf = this.stack[0];
-		return StringTools.trim(group);
-	}
-	,endBlock: function() {
-		var group = this.endGroup();
-		this.lessTabs();
-		if(group.length == 0) this.buf.b += " {}"; else if(this.cfg.cuddle_type_braces) this.buf.b += Std.string(" {\n" + this.tabs + "\n" + group + "\n" + this.tabs + "}"); else this.buf.b += Std.string("\n" + this.tabs + "{\n" + this.tabs + "\t" + group + "\n" + this.tabs + "}");
-	}
-	,addWordOrBlock: function(s,style) {
-		if(s.indexOf("\n") > -1 || this.lastChar == "\n") this.addBlock(s,style); else this.addWord(s,style);
-	}
-	,addWord: function(s,style) {
-		this.space();
-		this.print(s,style);
-	}
-	,addBlock: function(s,style) {
-		this.newline();
-		this.print(s,style);
-		this.newline();
-	}
-	,print: function(s,style) {
-		if(this.doc != null) {
-			var d = this.doc;
-			this.doc = null;
-			this.addWordOrBlock("/*" + d + "*/",haxeprinter.Style.SComment);
+	add: function(token,style,before,after) {
+		var space = token.space;
+		if(before == null) {
+			var _g = token.tok;
+			switch(_g[1]) {
+			case 10:case 18:case 19:case 1:
+				before = haxeprinter.Spacing.SNone;
+				break;
+			case 0:
+				switch(_g[2][1]) {
+				case 39:case 38:case 37:
+					before = haxeprinter.Spacing.SNone;
+					break;
+				default:
+					before = haxeprinter.Spacing.SIgnore;
+				}
+				break;
+			case 9:case 11:
+				before = haxeprinter.Spacing.SNone;
+				break;
+			default:
+				before = haxeprinter.Spacing.SIgnore;
+			}
 		}
-		if(this.lastChar == "\n" || this.buf.b.length == 0) this.buf.b += Std.string(this.tabs);
-		this.lastChar = s.charAt(s.length - 1);
-		if(style == null) this.buf.b += Std.string(s); else {
+		if(after == null) after = haxeprinter.Spacing.SNone;
+		if(this.cfg.condense_multiple_spaces) space = new EReg(" +","").replace(space," ");
+		if(this.cfg.condense_multiple_empty_lines) space = new EReg("\n{3,}","").replace(space,"\n\n");
+		var newline = space.indexOf("\n") > -1;
+		switch(before[1]) {
+		case 0:
+			if(newline) space = space; else if(this.lastChar == " ") space = ""; else space = " ";
+			break;
+		case 1:
+			space = "\n";
+			break;
+		case 2:
+			space = space;
+			break;
+		case 3:
+			if(newline) space = space; else space = "";
+			break;
+		}
+		this.buf.b += Std.string(space);
+		var s = this.toString(token);
+		if(style != null) {
 			var style1 = ((function($this) {
 				var $r;
 				var _this = Std.string(style);
@@ -1931,34 +1969,111 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				return $r;
 			}(this))).toLowerCase();
 			this.buf.b += Std.string("<span class=\"" + style1 + "\">" + s + "</span>");
+		} else this.buf.b += Std.string(s);
+		if(after == haxeprinter.Spacing.SSpace) {
+			this.buf.b += " ";
+			this.lastChar = " ";
+		} else this.lastChar = s.charAt(s.length - 1);
+	}
+	,addLast: function(style,before,after) {
+		this.add(this.last,style,before,after);
+	}
+	,addNext: function(style,before,after) {
+		this.add(hxparse.Parser_haxeparser_HaxeLexer_haxeparser_Token.prototype.peek.call(this,0),style,before,after);
+		this.last = this.token.elt;
+		this.token = this.token.next;
+	}
+	,toString: function(token) {
+		{
+			var _g = token.tok;
+			switch(_g[1]) {
+			case 0:
+				var k = _g[2];
+				return HxOverrides.substr(k[0],3,null).toLowerCase();
+			case 1:
+				switch(_g[2][1]) {
+				case 0:
+					var s = _g[2][2];
+					return s;
+				case 1:
+					var s = _g[2][2];
+					return s;
+				case 3:
+					var s = _g[2][2];
+					return s;
+				case 2:
+					var s1 = _g[2][2];
+					var c = byte.js._ByteData.ByteData_Impl_.readString(this.input,token.pos.min,1);
+					return "" + c + s1 + c;
+				case 4:
+					var opt = _g[2][3];
+					var r = _g[2][2];
+					return "~/" + r + "/" + opt;
+				}
+				break;
+			case 2:
+				var s2 = _g[2];
+				return "#" + s2;
+			case 3:
+				var s3 = _g[2];
+				return "$" + s3;
+			case 4:
+				var op = _g[2];
+				return new haxe.macro.Printer("").printUnop(op);
+			case 5:
+				var op1 = _g[2];
+				return new haxe.macro.Printer("").printBinop(op1);
+			case 6:
+				var s4 = _g[2];
+				return "/*" + s4 + "*/";
+			case 7:
+				var s5 = _g[2];
+				return "//" + s5;
+			case 8:
+				var s6 = _g[2];
+				return "" + s6 + "...";
+			case 9:
+				return ";";
+			case 10:
+				return ".";
+			case 11:
+				return ":";
+			case 12:
+				return "->";
+			case 13:
+				return ",";
+			case 14:
+				return "[";
+			case 15:
+				return "]";
+			case 16:
+				return "{";
+			case 17:
+				return "}";
+			case 18:
+				return "(";
+			case 19:
+				return ")";
+			case 20:
+				return "?";
+			case 21:
+				return "@";
+			case 22:
+				return "<eof>";
+			}
 		}
 	}
-	,breakPoint: function(force) {
-		if(force == null) force = false;
-	}
-	,newline: function(force) {
-		if(force == null) force = false;
-		if(force || this.lastChar != "\n" && this.lastChar != null) {
-			this.buf.b += "\n";
-			this.lastChar = "\n";
-		}
+	,getContent: function() {
+		this.parseFile();
+		var output = StringTools.trim(this.buf.b);
+		if(this.cfg.empty_line_at_end_of_file) output += "\n";
+		return output;
 	}
 	,moreTabs: function() {
 		this.tabs += "\t";
 	}
 	,lessTabs: function() {
 		this.tabs = HxOverrides.substr(this.tabs,1,null);
-	}
-	,space: function() {
-		if(this.lastChar == " " || this.lastChar == "\t" || this.lastChar == "\n" || this.lastChar == null) return;
-		this.print(" ");
-	}
-	,brace: function(cuddle) {
-		if(cuddle) this.space(); else this.newline();
-	}
-	,printString: function(s,pos) {
-		var c = byte.js._ByteData.ByteData_Impl_.readString(this.input,pos.min,1);
-		this.print("" + c + s + c,haxeprinter.Style.SString);
 	}
 	,peek: function(n) {
 		if(n != 0) throw "n != 0";
@@ -1968,37 +2083,27 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			switch(_g[1]) {
 			case 7:
 				var s = _g[2];
-				this.addWord("//" + s,haxeprinter.Style.SComment);
-				this.newline();
-				this.last = this.token.elt;
-				this.token = this.token.next;
+				this.addNext(haxeprinter.Style.SComment);
 				return this.peek(0);
 			case 6:
-				var s1 = _g[2];
-				this.doc = s1;
-				this.last = this.token.elt;
-				this.token = this.token.next;
+				var s = _g[2];
+				this.addNext(haxeprinter.Style.SComment);
 				return this.peek(0);
 			case 2:
-				var s2 = _g[2];
-				var s3 = _g[2];
-				var s4 = _g[2];
+				var s1 = _g[2];
 				switch(_g[2]) {
 				case "error":
-					this.last = this.token.elt;
-					this.token = this.token.next;
-					this.print("#error",haxeprinter.Style.SMacro);
-					this.print(" ");
+					this.addNext(haxeprinter.Style.SMacro);
 					{
 						var _g1 = this.peek(0).tok;
 						switch(_g1[1]) {
 						case 1:
 							switch(_g1[2][1]) {
 							case 2:
-								var s5 = _g1[2][2];
+								var s2 = _g1[2][2];
+								this.add(this.peek(0),haxeprinter.Style.SString);
 								this.last = this.token.elt;
 								this.token = this.token.next;
-								this.print("\"" + s5 + "\"",haxeprinter.Style.SString);
 								break;
 							default:
 								throw "String expected";
@@ -2010,27 +2115,11 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					}
 					return this.peek(0);
 				case "if":case "elseif":
-					this.last = this.token.elt;
-					this.token = this.token.next;
-					this.print("#" + s2,haxeprinter.Style.SMacro);
-					this.space();
+					this.addNext(haxeprinter.Style.SMacro);
 					this.skipMacroCond();
-					this.startGroup();
-					return this.peek(0);
-				case "end":case "else":
-					this.last = this.token.elt;
-					this.token = this.token.next;
-					var group = this.endGroup();
-					if(group.indexOf("\n") > -1) this.newline(); else this.print(" ");
-					this.print(group);
-					if(group.indexOf("\n") > -1) this.newline(); else this.print(" ");
-					this.print("#" + s3,haxeprinter.Style.SMacro);
-					if(group.indexOf("\n") > -1) this.newline();
 					return this.peek(0);
 				default:
-					this.print("#" + s4,haxeprinter.Style.SMacro);
-					this.last = this.token.elt;
-					this.token = this.token.next;
+					this.addNext(haxeprinter.Style.SMacro);
 					return this.peek(0);
 				}
 				break;
@@ -2043,91 +2132,64 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 		{
 			var _g = hxparse.Parser_haxeparser_HaxeLexer_haxeparser_Token.prototype.peek.call(this,0).tok;
 			var tok = _g;
-			var tok1 = _g;
 			switch(_g[1]) {
 			case 1:
 				switch(_g[2][1]) {
 				case 3:
-					this.print(haxeparser.TokenDefPrinter.print(tok),haxeprinter.Style.SMacro);
-					this.last = this.token.elt;
-					this.token = this.token.next;
+					this.addNext(haxeprinter.Style.SMacro);
 					break;
 				default:
-					throw "Invalid macro cond: " + Std.string(tok1);
+					throw "Invalid macro cond: " + Std.string(tok);
 				}
 				break;
 			case 0:
-				this.print(haxeparser.TokenDefPrinter.print(tok),haxeprinter.Style.SMacro);
-				this.last = this.token.elt;
-				this.token = this.token.next;
+				this.addNext(haxeprinter.Style.SMacro);
 				break;
 			case 18:
 				var pCount = 0;
 				while(true) {
 					var _g1 = hxparse.Parser_haxeparser_HaxeLexer_haxeparser_Token.prototype.peek.call(this,0).tok;
-					var tok2 = _g1;
+					var tok1 = _g1;
 					switch(_g1[1]) {
 					case 18:
 						++pCount;
-						this.last = this.token.elt;
-						this.token = this.token.next;
-						this.print("(",haxeprinter.Style.SMacro);
+						this.addNext(haxeprinter.Style.SMacro);
 						break;
 					case 19:
 						--pCount;
-						this.last = this.token.elt;
-						this.token = this.token.next;
-						this.print(")",haxeprinter.Style.SMacro);
+						this.addNext(haxeprinter.Style.SMacro);
 						if(pCount == 0) return;
 						break;
 					default:
-						this.last = this.token.elt;
-						this.token = this.token.next;
-						this.print(haxeparser.TokenDefPrinter.print(tok2),haxeprinter.Style.SMacro);
+						this.addNext(haxeprinter.Style.SMacro);
 					}
 				}
 				break;
 			case 4:
 				switch(_g[2][1]) {
 				case 2:
-					this.print("!",haxeprinter.Style.SMacro);
-					this.last = this.token.elt;
-					this.token = this.token.next;
+					this.addNext(haxeprinter.Style.SMacro);
 					this.skipMacroCond();
 					break;
 				default:
-					throw "Invalid macro cond: " + Std.string(tok1);
+					throw "Invalid macro cond: " + Std.string(tok);
 				}
 				break;
 			default:
-				throw "Invalid macro cond: " + Std.string(tok1);
+				throw "Invalid macro cond: " + Std.string(tok);
 			}
 		}
 	}
-	,printModifier: function(modifier) {
-		var order = this.cfg.modifier_order;
-		modifier.sort(function(a,b) {
-			return HxOverrides.indexOf(order,a,0) - HxOverrides.indexOf(order,b,0);
-		});
-		var _g = 0;
-		while(_g < modifier.length) {
-			var modifier1 = modifier[_g];
-			++_g;
-			this.print(modifier1,haxeprinter.Style.SModifier);
-			this.print(" ");
-		}
-	}
-	,parseAnyIdent: function(style) {
+	,parseAnyIdent: function(style,before,after) {
 		{
 			var _g = this.peek(0);
 			switch(_g.tok[1]) {
 			case 1:
 				switch(_g.tok[2][1]) {
 				case 3:
-					var s = _g.tok[2][2];
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print(s,style);
+					this.addLast(style,before,after);
 					break;
 				default:
 					throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -2135,25 +2197,19 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				break;
 			case 0:
 				switch(_g.tok[2][1]) {
-				case 41:
+				case 41:case 22:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("macro",style);
-					break;
-				case 22:
-					this.last = this.token.elt;
-					this.token = this.token.next;
-					this.print("new",style);
+					this.addLast(style,before,after);
 					break;
 				default:
 					throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
 				}
 				break;
 			case 3:
-				var s1 = _g.tok[2];
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("$" + s1,style);
+				this.addLast(style,before,after);
 				break;
 			default:
 				throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -2167,9 +2223,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 11:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				if(this.cfg.space_before_type_hint_colon) this.space();
-				this.print(":");
-				if(this.cfg.space_after_type_hint_colon) this.space();
+				this.addLast();
 				this.parseComplexType();
 				break;
 			default:
@@ -2177,7 +2231,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			}
 		}
 	}
-	,parseAssignment: function(spaceBefore,spaceAfter) {
+	,parseAssignment: function() {
 		{
 			var _g = this.peek(0);
 			switch(_g.tok[1]) {
@@ -2186,9 +2240,8 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 4:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					if(spaceBefore) this.space();
-					this.print("=");
-					if(spaceAfter) this.space();
+					var around = this.spaceIf(this.cfg.space_around_assignment_operators);
+					this.addLast(null,around,around);
 					this.parseExpr();
 					break;
 				default:
@@ -2201,19 +2254,22 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 		}
 	}
 	,parseFunction: function() {
-		this.print("function",haxeprinter.Style.SKwd);
-		this.print(" ");
-		this.popt((function(f,a1) {
+		this.addLast(haxeprinter.Style.SKwd);
+		this.popt((function(f,a1,a2) {
 			return function() {
-				return f(a1);
+				return f(a1,a2);
 			};
-		})($bind(this,this.parseAnyIdent),null));
+		})($bind(this,this.parseAnyIdent),null,haxeprinter.Spacing.SSpace));
 		this.popt($bind(this,this.parseTypeParameters));
-		this.expect(haxeparser.TokenDef.POpen);
-		this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseFunctionArgument),this.withSpace(this.cfg.space_between_function_args));
+		this.expect(haxeparser.TokenDef.POpen,null,this.spaceIf(this.cfg.space_before_method_declaration_parenthesis));
+		this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseFunctionArgument));
 		this.expect(haxeparser.TokenDef.PClose);
 		this.popt($bind(this,this.parseTypeHint));
-		this.popt($bind(this,this.parseExpr));
+		this.popt((function(f1,a11,a21) {
+			return function() {
+				return f1(a11,a21);
+			};
+		})($bind(this,this.parseExpr),this.spaceIf(this.cfg.space_before_method_left_brace),null));
 	}
 	,parseFunctionArgument: function() {
 		{
@@ -2222,7 +2278,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 20:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("?");
+				this.addLast();
 				break;
 			default:
 				null;
@@ -2237,7 +2293,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					var s = _g1.tok[2][2];
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print(s,haxeprinter.Style.SIdent);
+					this.addLast(haxeprinter.Style.SIdent);
 					break;
 				default:
 					throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -2248,14 +2304,9 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			}
 		}
 		this.popt($bind(this,this.parseTypeHint));
-		this.popt((function(f,a1,a2) {
-			return function() {
-				return f(a1,a2);
-			};
-		})($bind(this,this.parseAssignment),this.cfg.space_around_function_arg_assign,this.cfg.space_around_function_arg_assign));
+		this.popt($bind(this,this.parseAssignment));
 	}
 	,parseModifier: function() {
-		var modifiers = [];
 		while(true) {
 			var _g = this.peek(0);
 			switch(_g.tok[1]) {
@@ -2265,22 +2316,14 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 17:case 18:case 19:case 25:case 35:case 41:case 33:case 31:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					var modifier = ((function($this) {
-						var $r;
-						var _this = Std.string(k);
-						$r = HxOverrides.substr(_this,3,null);
-						return $r;
-					}(this))).toLowerCase();
-					modifiers.push(modifier);
-					this.print(modifier,haxeprinter.Style.SKwd);
-					this.space();
+					this.addLast(haxeprinter.Style.SKwd);
 					break;
 				default:
-					return modifiers;
+					return;
 				}
 				break;
 			default:
-				return modifiers;
+				return;
 			}
 		}
 	}
@@ -2291,8 +2334,12 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 18:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("(");
-				this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseExpr),this.withSpace(this.cfg.space_between_function_args));
+				this.addLast();
+				this.psep(haxeparser.TokenDef.Comma,(function(f,a1,a2) {
+					return function() {
+						return f(a1,a2);
+					};
+				})($bind(this,this.parseExpr),null,null));
 				this.expect(haxeparser.TokenDef.PClose);
 				break;
 			default:
@@ -2307,7 +2354,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 11:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(":");
+				this.addLast();
 				break;
 			default:
 				null;
@@ -2322,7 +2369,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					var s = _g1.tok[2][2];
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print(s,haxeprinter.Style.SIdent);
+					this.addLast(haxeprinter.Style.SIdent);
 					break;
 				default:
 					throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -2332,7 +2379,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				var kwd = _g1.tok[2];
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(HxOverrides.substr(kwd[0],3,null).toLowerCase(),haxeprinter.Style.SKwd);
+				this.addLast(haxeprinter.Style.SKwd);
 				break;
 			default:
 				throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -2346,7 +2393,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 21:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("@");
+				this.addLast();
 				this.parseMetaName();
 				this.popt($bind(this,this.parseCallArguments));
 				this.parseMeta();
@@ -2357,11 +2404,8 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 		}
 	}
 	,parseFile: function() {
-		this.peek(0);
-		this.startGroup();
 		this.parseMeta();
 		this.parseModifier();
-		var meta = this.endGroup();
 		{
 			var _g = this.peek(0);
 			switch(_g.tok[1]) {
@@ -2372,14 +2416,12 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 34:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.newline();
-					this.print("package",haxeprinter.Style.SDecl);
+					this.addLast(haxeprinter.Style.SDecl);
 					if(this.peek(0).tok == haxeparser.TokenDef.Semicolon) {
+						this.add(this.peek(0));
 						this.last = this.token.elt;
 						this.token = this.token.next;
-						this.print(";");
 					} else {
-						this.space();
 						this.parseDotPath();
 						this.expect(haxeparser.TokenDef.Semicolon);
 					}
@@ -2387,9 +2429,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 13:case 36:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.newline();
-					this.print(kwd == haxeparser.Keyword.KwdImport?"import":"using",haxeprinter.Style.SDecl);
-					this.print(" ");
+					this.addLast(haxeprinter.Style.SDecl);
 					this.popt($bind(this,this.parseDotPath));
 					{
 						var _g1 = this.peek(0);
@@ -2399,7 +2439,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 							case 1:
 								this.last = this.token.elt;
 								this.token = this.token.next;
-								this.print("*",haxeprinter.Style.SType);
+								this.addLast(haxeprinter.Style.SType);
 								break;
 							default:
 								null;
@@ -2417,9 +2457,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 							case 27:
 								this.last = this.token.elt;
 								this.token = this.token.next;
-								this.print(" ");
-								this.print("in",haxeprinter.Style.SDecl);
-								this.print(" ");
+								this.addLast(haxeprinter.Style.SDecl);
 								this.parseAnyIdent(haxeprinter.Style.SType);
 								break;
 							default:
@@ -2435,69 +2473,45 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 1:case 28:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.newline();
-					if(this.cfg.empty_line_before_type) this.newline(true);
-					if(meta.length > 0) this.print(meta + " ");
-					this.print(kwd1 == haxeparser.Keyword.KwdClass?"class":"interface",haxeprinter.Style.SDecl);
-					this.space();
-					this.parseAnyIdent(haxeprinter.Style.SType);
+					this.addLast(haxeprinter.Style.SDecl);
+					this.parseAnyIdent(haxeprinter.Style.SType,haxeprinter.Spacing.SSpace);
 					this.popt($bind(this,this.parseTypeParameters));
 					this.parseHeritance();
-					this.expect(haxeparser.TokenDef.BrOpen,false);
-					this.startGroup();
+					this.expect(haxeparser.TokenDef.BrOpen);
 					this.moreTabs();
 					this.parseClassFields(false);
-					this.endBlock();
 					break;
 				case 26:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.newline();
-					if(this.cfg.empty_line_before_type) this.newline(true);
-					if(meta.length > 0) this.print(meta + " ");
-					this.print("enum",haxeprinter.Style.SDecl);
-					this.space();
+					this.addLast(haxeprinter.Style.SDecl);
 					this.parseAnyIdent(haxeprinter.Style.SType);
 					this.popt($bind(this,this.parseTypeParameters));
-					this.expect(haxeparser.TokenDef.BrOpen,false);
-					this.startGroup();
+					this.expect(haxeparser.TokenDef.BrOpen);
 					this.moreTabs();
 					this.parseEnumFields(false);
-					this.endBlock();
 					break;
 				case 32:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.newline();
-					if(this.cfg.empty_line_before_type) this.newline(true);
-					if(meta.length > 0) this.print(meta + " ");
-					this.print("typedef",haxeprinter.Style.SDecl);
-					this.space();
+					this.addLast(haxeprinter.Style.SDecl);
 					this.parseAnyIdent(haxeprinter.Style.SType);
 					this.popt($bind(this,this.parseTypeParameters));
-					if(this.cfg.space_around_typedef_assign) this.space();
 					this.expect(haxeparser.TokenDef.Binop(haxe.macro.Binop.OpAssign));
-					if(this.cfg.space_around_typedef_assign) this.space();
 					this.parseComplexType();
 					this.semicolon();
 					break;
 				case 40:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.newline();
-					if(this.cfg.empty_line_before_type) this.newline(true);
-					if(meta.length > 0) this.print(meta + " ");
-					this.print("abstract",haxeprinter.Style.SDecl);
-					this.print(" ");
+					this.addLast(haxeprinter.Style.SDecl);
 					this.parseAnyIdent(haxeprinter.Style.SType);
 					this.popt($bind(this,this.parseTypeParameters));
 					this.popt($bind(this,this.parseAbstractThis));
 					this.popt($bind(this,this.parseAbstractRelations));
-					this.expect(haxeparser.TokenDef.BrOpen,false);
-					this.startGroup();
+					this.expect(haxeparser.TokenDef.BrOpen);
 					this.moreTabs();
 					this.parseEnumFields(false);
-					this.endBlock();
 					break;
 				default:
 					throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -2522,8 +2536,8 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 9:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("<");
-					this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseTypeParameter),this.withSpace(this.cfg.space_between_type_params));
+					this.addLast();
+					this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseTypeParameter));
 					this.expect(haxeparser.TokenDef.Binop(haxe.macro.Binop.OpGt));
 					break;
 				default:
@@ -2546,15 +2560,15 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 11:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(":");
+				this.addLast();
 				{
 					var _g1 = this.peek(0);
 					switch(_g1.tok[1]) {
 					case 18:
 						this.last = this.token.elt;
 						this.token = this.token.next;
-						this.print("(");
-						this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseComplexType),this.withSpace(this.cfg.space_between_type_param_constraints));
+						this.addLast();
+						this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseComplexType));
 						this.expect(haxeparser.TokenDef.PClose);
 						break;
 					default:
@@ -2578,20 +2592,14 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					case 11:
 						this.last = this.token.elt;
 						this.token = this.token.next;
-						this.space();
-						this.print("extends",haxeprinter.Style.SDecl);
-						this.space();
+						this.addLast(haxeprinter.Style.SDecl);
 						this.parseComplexType();
-						this.breakPoint(this.cfg.extends_on_newline);
 						break;
 					case 12:
 						this.last = this.token.elt;
 						this.token = this.token.next;
-						this.space();
-						this.print("implements",haxeprinter.Style.SDecl);
-						this.space();
+						this.addLast(haxeprinter.Style.SDecl);
 						this.parseComplexType();
-						this.breakPoint(this.cfg.implements_on_newline);
 						break;
 					default:
 						throw "__break__";
@@ -2614,27 +2622,18 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 2:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("var",haxeprinter.Style.SKwd);
-					this.space();
-					this.parseAnyIdent();
+					this.addLast(haxeprinter.Style.SKwd);
+					this.parseAnyIdent(null,haxeprinter.Spacing.SSpace);
 					this.popt($bind(this,this.parsePropertyAccessors));
 					this.popt($bind(this,this.parseTypeHint));
-					this.popt((function(f,a1,a2) {
-						return function() {
-							return f(a1,a2);
-						};
-					})($bind(this,this.parseAssignment),this.cfg.space_around_property_assign,this.cfg.space_around_property_assign));
+					this.popt($bind(this,this.parseAssignment));
 					this.semicolon();
-					this.newline();
-					if(this.cfg.empty_line_between_fields) this.newline(true);
 					break;
 				case 0:
 					this.last = this.token.elt;
 					this.token = this.token.next;
 					this.parseFunction();
 					this.semicolon();
-					this.newline();
-					if(this.cfg.empty_line_between_fields) this.newline(true);
 					break;
 				default:
 					throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -2644,6 +2643,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				this.last = this.token.elt;
 				this.token = this.token.next;
 				this.lessTabs();
+				this.addLast();
 				return;
 			default:
 				throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -2653,7 +2653,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 	}
 	,parsePropertyIdent: function() {
 		try {
-			this.parseAnyIdent(haxeprinter.Style.SKwd);
+			this.parseAnyIdent(haxeprinter.Style.SKwd,haxeprinter.Spacing.SNone,haxeprinter.Spacing.SNone);
 			null;
 		} catch( _ ) {
 			if( js.Boot.__instanceof(_,hxparse.NoMatch) ) {
@@ -2662,20 +2662,10 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					switch(_g.tok[1]) {
 					case 0:
 						switch(_g.tok[2][1]) {
-						case 16:
+						case 37:case 33:case 16:
 							this.last = this.token.elt;
 							this.token = this.token.next;
-							this.print("default",haxeprinter.Style.SKwd);
-							break;
-						case 37:
-							this.last = this.token.elt;
-							this.token = this.token.next;
-							this.print("null",haxeprinter.Style.SKwd);
-							break;
-						case 33:
-							this.last = this.token.elt;
-							this.token = this.token.next;
-							this.print("dynamic",haxeprinter.Style.SKwd);
+							this.addLast(haxeprinter.Style.SKwd,haxeprinter.Spacing.SNone,haxeprinter.Spacing.SNone);
 							break;
 						default:
 							throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -2695,10 +2685,9 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 18:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("(");
+				this.addLast();
 				this.parsePropertyIdent();
-				this.expect(haxeparser.TokenDef.Comma);
-				if(this.cfg.space_between_property_get_set) this.print(" ");
+				this.expect(haxeparser.TokenDef.Comma,null,haxeprinter.Spacing.SNone,haxeprinter.Spacing.SSpace);
 				this.parsePropertyIdent();
 				this.expect(haxeparser.TokenDef.PClose);
 				break;
@@ -2715,6 +2704,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 17:
 				this.last = this.token.elt;
 				this.token = this.token.next;
+				this.addLast();
 				return;
 			default:
 				null;
@@ -2728,8 +2718,8 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 18:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("(");
-				this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseFunctionArgument),this.withSpace(this.cfg.space_between_function_args));
+				this.addLast();
+				this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseFunctionArgument));
 				this.expect(haxeparser.TokenDef.PClose);
 				break;
 			default:
@@ -2747,7 +2737,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 18:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("(");
+				this.addLast();
 				this.parseComplexType();
 				this.expect(haxeparser.TokenDef.PClose);
 				break;
@@ -2768,8 +2758,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					case "from":case "to":
 						this.last = this.token.elt;
 						this.token = this.token.next;
-						this.space();
-						this.print(s,haxeprinter.Style.SDecl);
+						this.addLast(haxeprinter.Style.SDecl);
 						this.parseComplexType();
 						this.parseAbstractRelations();
 						break;
@@ -2798,7 +2787,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 10:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(".",haxeprinter.Style.SType);
+				this.addLast(haxeprinter.Style.SType);
 				this.parseDotPath();
 				break;
 			case 5:
@@ -2806,8 +2795,8 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 9:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("<");
-					this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseComplexType),this.withSpace(this.cfg.space_between_type_params));
+					this.addLast();
+					this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseComplexType));
 					this.expect(haxeparser.TokenDef.Binop(haxe.macro.Binop.OpGt));
 					break;
 				default:
@@ -2825,8 +2814,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			null;
 		} catch( _ ) {
 			if( js.Boot.__instanceof(_,hxparse.NoMatch) ) {
-				this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseStructureTypeField),this.withSpace(this.cfg.space_between_anon_type_fields));
-				this.space();
+				this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseStructureTypeField));
 				this.expect(haxeparser.TokenDef.BrClose);
 			} else throw(_);
 		}
@@ -2843,14 +2831,14 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					case 18:
 						this.last = this.token.elt;
 						this.token = this.token.next;
-						this.print("(");
+						this.addLast();
 						this.parseComplexType();
 						this.expect(haxeparser.TokenDef.PClose);
 						break;
 					case 16:
 						this.last = this.token.elt;
 						this.token = this.token.next;
-						this.print("{ ");
+						this.addLast();
 						{
 							var _g1 = this.peek(0);
 							switch(_g1.tok[1]) {
@@ -2859,7 +2847,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 								case 7:
 									this.last = this.token.elt;
 									this.token = this.token.next;
-									this.print("> ");
+									this.addLast();
 									this.parseComplexType();
 									this.expect(haxeparser.TokenDef.Comma);
 									this.parseStructureFields();
@@ -2890,7 +2878,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 12:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(" -> ");
+				this.addLast();
 				this.parseComplexType();
 				break;
 			default:
@@ -2905,16 +2893,14 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 20:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("?");
+				this.addLast();
 				break;
 			default:
 				null;
 			}
 		}
 		this.parseAnyIdent();
-		if(this.cfg.space_before_structure_colon) this.space();
 		this.expect(haxeparser.TokenDef.DblDot);
-		if(this.cfg.space_after_structure_colon) this.space();
 		this.parseComplexType();
 	}
 	,parseStructureElement: function() {
@@ -2933,7 +2919,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 							var s = _g.tok[2][2];
 							this.last = this.token.elt;
 							this.token = this.token.next;
-							this.printString(s,p);
+							this.addLast();
 							break;
 						default:
 							throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -2945,19 +2931,13 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				}
 			} else throw(_);
 		}
-		if(this.cfg.space_before_structure_colon) this.space();
 		this.expect(haxeparser.TokenDef.DblDot);
-		if(this.cfg.space_after_structure_colon) this.space();
 		this.parseExpr();
 	}
 	,parseVarDeclaration: function() {
-		this.parseAnyIdent();
+		this.parseAnyIdent(null,haxeprinter.Spacing.SSpace);
 		this.popt($bind(this,this.parseTypeHint));
-		this.popt((function(f,a1,a2) {
-			return function() {
-				return f(a1,a2);
-			};
-		})($bind(this,this.parseAssignment),true,true));
+		this.popt($bind(this,this.parseAssignment));
 	}
 	,parseMacroExpr: function() {
 		{
@@ -2966,7 +2946,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 11:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(" : ");
+				this.addLast();
 				this.parseComplexType();
 				break;
 			case 0:
@@ -2974,9 +2954,8 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 2:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("var",haxeprinter.Style.SKwd);
-					this.print(" ");
-					this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseVarDeclaration),this.withSpace(true));
+					this.addLast(haxeprinter.Style.SKwd);
+					this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseVarDeclaration));
 					break;
 				default:
 					this.parseExpr();
@@ -2998,14 +2977,13 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 21:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("catch",haxeprinter.Style.SKwd);
-					this.print(" ");
-					this.expect(haxeparser.TokenDef.POpen);
+					this.addLast(haxeprinter.Style.SKwd,this.spaceIf(this.cfg.space_before_catch_keyword));
+					this.expect(haxeparser.TokenDef.POpen,null,this.spaceIf(this.cfg.space_before_catch_parenthesis));
 					this.parseAnyIdent();
 					this.expect(haxeparser.TokenDef.DblDot);
 					this.parseComplexType();
 					this.expect(haxeparser.TokenDef.PClose);
-					this.parseExpr();
+					this.parseExpr(this.spaceIf(this.cfg.space_before_catch_left_brace));
 					break;
 				default:
 					throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -3017,7 +2995,6 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 		}
 	}
 	,parseBlockElement: function() {
-		this.newline();
 		{
 			var _g = this.peek(0);
 			switch(_g.tok[1]) {
@@ -3026,9 +3003,8 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 2:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("var",haxeprinter.Style.SKwd);
-					this.print(" ");
-					this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseVarDeclaration),this.withSpace(true));
+					this.addLast(haxeprinter.Style.SKwd);
+					this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseVarDeclaration));
 					this.semicolon();
 					break;
 				default:
@@ -3042,14 +3018,11 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			}
 		}
 	}
-	,parseBlockOrStructure: function() {
-		this.newline();
-		this.print("{");
-		this.newline();
+	,parseBlockOrStructure: function(before,after) {
+		this.addLast(null,before);
 		this.moreTabs();
 		{
 			var _g = this.peek(0);
-			var fieldToken = _g.tok;
 			switch(_g.tok[1]) {
 			case 1:
 				switch(_g.tok[2][1]) {
@@ -3057,16 +3030,15 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					var p = _g.pos;
 					this.last = this.token.elt;
 					this.token = this.token.next;
+					var fieldToken = this.last;
 					{
 						var _g1 = this.peek(0);
 						switch(_g1.tok[1]) {
 						case 11:
 							this.last = this.token.elt;
 							this.token = this.token.next;
-							this.print(haxeparser.TokenDefPrinter.print(fieldToken),haxeprinter.Style.SIdent);
-							if(this.cfg.space_before_structure_colon) this.space();
-							this.print(":");
-							if(this.cfg.space_after_structure_colon) this.space();
+							this.add(fieldToken,haxeprinter.Style.SIdent);
+							this.addLast();
 							this.parseExpr();
 							{
 								var _g2 = this.peek(0);
@@ -3074,16 +3046,15 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 								case 13:
 									this.last = this.token.elt;
 									this.token = this.token.next;
-									this.print(",");
-									this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseStructureElement),this.withSpace(this.cfg.space_between_anon_type_fields));
+									this.addLast();
+									this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseStructureElement));
 									this.expect(haxeparser.TokenDef.BrClose);
 									break;
 								case 17:
 									this.last = this.token.elt;
 									this.token = this.token.next;
 									this.lessTabs();
-									this.newline();
-									this.print("}");
+									this.addLast();
 									break;
 								default:
 									throw new hxparse.Unexpected(this.peek(0),this.stream.curPos());
@@ -3091,29 +3062,31 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 							}
 							break;
 						default:
-							switch(fieldToken[1]) {
-							case 1:
-								switch(fieldToken[2][1]) {
-								case 3:
-									var s = fieldToken[2][2];
-									this.print(s,haxeprinter.Style.SIdent);
-									break;
-								case 2:
-									var s1 = fieldToken[2][2];
-									this.printString(s1,p);
+							{
+								var _g21 = fieldToken.tok;
+								switch(_g21[1]) {
+								case 1:
+									switch(_g21[2][1]) {
+									case 3:
+										var s = _g21[2][2];
+										this.add(fieldToken,haxeprinter.Style.SIdent);
+										break;
+									case 2:
+										var s1 = _g21[2][2];
+										this.add(fieldToken,haxeprinter.Style.SString);
+										break;
+									default:
+										throw false;
+									}
 									break;
 								default:
 									throw false;
 								}
-								break;
-							default:
-								throw false;
 							}
 							this.parseExprNext();
 							this.semicolon();
 							this.plist($bind(this,this.parseBlockElement));
 							this.lessTabs();
-							this.newline();
 							this.expect(haxeparser.TokenDef.BrClose);
 						}
 					}
@@ -3122,16 +3095,15 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					var p = _g.pos;
 					this.last = this.token.elt;
 					this.token = this.token.next;
+					var fieldToken = this.last;
 					{
 						var _g1 = this.peek(0);
 						switch(_g1.tok[1]) {
 						case 11:
 							this.last = this.token.elt;
 							this.token = this.token.next;
-							this.print(haxeparser.TokenDefPrinter.print(fieldToken),haxeprinter.Style.SIdent);
-							if(this.cfg.space_before_structure_colon) this.space();
-							this.print(":");
-							if(this.cfg.space_after_structure_colon) this.space();
+							this.add(fieldToken,haxeprinter.Style.SIdent);
+							this.addLast();
 							this.parseExpr();
 							{
 								var _g2 = this.peek(0);
@@ -3139,16 +3111,15 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 								case 13:
 									this.last = this.token.elt;
 									this.token = this.token.next;
-									this.print(",");
-									this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseStructureElement),this.withSpace(this.cfg.space_between_anon_type_fields));
+									this.addLast();
+									this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseStructureElement));
 									this.expect(haxeparser.TokenDef.BrClose);
 									break;
 								case 17:
 									this.last = this.token.elt;
 									this.token = this.token.next;
 									this.lessTabs();
-									this.newline();
-									this.print("}");
+									this.addLast();
 									break;
 								default:
 									throw new hxparse.Unexpected(this.peek(0),this.stream.curPos());
@@ -3156,29 +3127,31 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 							}
 							break;
 						default:
-							switch(fieldToken[1]) {
-							case 1:
-								switch(fieldToken[2][1]) {
-								case 3:
-									var s = fieldToken[2][2];
-									this.print(s,haxeprinter.Style.SIdent);
-									break;
-								case 2:
-									var s1 = fieldToken[2][2];
-									this.printString(s1,p);
+							{
+								var _g21 = fieldToken.tok;
+								switch(_g21[1]) {
+								case 1:
+									switch(_g21[2][1]) {
+									case 3:
+										var s = _g21[2][2];
+										this.add(fieldToken,haxeprinter.Style.SIdent);
+										break;
+									case 2:
+										var s1 = _g21[2][2];
+										this.add(fieldToken,haxeprinter.Style.SString);
+										break;
+									default:
+										throw false;
+									}
 									break;
 								default:
 									throw false;
 								}
-								break;
-							default:
-								throw false;
 							}
 							this.parseExprNext();
 							this.semicolon();
 							this.plist($bind(this,this.parseBlockElement));
 							this.lessTabs();
-							this.newline();
 							this.expect(haxeparser.TokenDef.BrClose);
 						}
 					}
@@ -3186,24 +3159,22 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				default:
 					this.plist($bind(this,this.parseBlockElement));
 					this.lessTabs();
-					this.newline();
 					this.expect(haxeparser.TokenDef.BrClose);
 				}
 				break;
 			case 17:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("}");
+				this.addLast();
 				break;
 			default:
 				this.plist($bind(this,this.parseBlockElement));
 				this.lessTabs();
-				this.newline();
 				this.expect(haxeparser.TokenDef.BrClose);
 			}
 		}
 	}
-	,parseExpr: function() {
+	,parseExpr: function(before,after) {
 		this.parseMeta();
 		{
 			var _g = this.peek(0);
@@ -3214,33 +3185,33 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					var s = _g.tok[2][2];
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print(s,haxeprinter.Style.SConst);
+					this.addLast(haxeprinter.Style.SConst);
 					break;
 				case 1:
 					var s = _g.tok[2][2];
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print(s,haxeprinter.Style.SConst);
+					this.addLast(haxeprinter.Style.SConst);
 					break;
 				case 3:
 					var s1 = _g.tok[2][2];
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print(s1,haxeprinter.Style.SIdent);
+					this.addLast(haxeprinter.Style.SIdent);
 					break;
 				case 2:
 					var p = _g.pos;
 					var s2 = _g.tok[2][2];
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.printString(s2,p);
+					this.addLast(haxeprinter.Style.SString);
 					break;
 				case 4:
 					var o = _g.tok[2][3];
 					var p1 = _g.tok[2][2];
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("~/" + p1 + "/" + o,haxeprinter.Style.SConst);
+					this.addLast(haxeprinter.Style.SConst);
 					break;
 				}
 				break;
@@ -3249,46 +3220,44 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 38:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("true",haxeprinter.Style.SConst);
+					this.addLast(haxeprinter.Style.SConst);
 					break;
 				case 39:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("false",haxeprinter.Style.SConst);
+					this.addLast(haxeprinter.Style.SConst);
 					break;
 				case 37:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("null",haxeprinter.Style.SConst);
+					this.addLast(haxeprinter.Style.SConst);
 					break;
 				case 23:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("this",haxeprinter.Style.SDecl);
+					this.addLast(haxeprinter.Style.SDecl);
 					break;
 				case 29:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("untyped",haxeprinter.Style.SKwd);
-					this.print(" ");
+					this.addLast(haxeprinter.Style.SKwd);
 					this.parseExpr();
 					break;
 				case 41:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("macro",haxeprinter.Style.SKwd);
-					this.print(" ");
+					this.addLast(haxeprinter.Style.SKwd);
 					this.parseMacroExpr();
 					break;
 				case 8:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("break",haxeprinter.Style.SKwd);
+					this.addLast(haxeprinter.Style.SKwd);
 					break;
 				case 9:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("continue",haxeprinter.Style.SKwd);
+					this.addLast(haxeprinter.Style.SKwd);
 					break;
 				case 0:
 					this.last = this.token.elt;
@@ -3298,15 +3267,17 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 10:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("return",haxeprinter.Style.SKwd);
-					this.print(" ");
-					this.popt($bind(this,this.parseExpr));
+					this.addLast(haxeprinter.Style.SKwd);
+					this.popt((function(f,a1,a2) {
+						return function() {
+							return f(a1,a2);
+						};
+					})($bind(this,this.parseExpr),null,null));
 					break;
 				case 24:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("throw",haxeprinter.Style.SKwd);
-					this.print(" ");
+					this.addLast(haxeprinter.Style.SKwd);
 					this.parseExpr();
 					break;
 				case 30:
@@ -3318,7 +3289,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 						case 18:
 							this.last = this.token.elt;
 							this.token = this.token.next;
-							this.print("(");
+							this.addLast();
 							this.parseExpr();
 							{
 								var _g2 = this.peek(0);
@@ -3326,7 +3297,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 								case 13:
 									this.last = this.token.elt;
 									this.token = this.token.next;
-									this.print(",");
+									this.addLast();
 									this.parseComplexType();
 									break;
 								default:
@@ -3344,20 +3315,17 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 2:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("var",haxeprinter.Style.SKwd);
-					this.print(" ");
+					this.addLast(haxeprinter.Style.SKwd);
 					this.parseVarDeclaration();
 					break;
 				case 3:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("if",haxeprinter.Style.SKwd);
-					this.print(" ");
-					this.expect(haxeparser.TokenDef.POpen);
+					this.addLast(haxeprinter.Style.SKwd);
+					this.expect(haxeparser.TokenDef.POpen,null,this.spaceIf(this.cfg.space_before_if_parenthesis));
 					this.parseExpr();
 					this.expect(haxeparser.TokenDef.PClose);
-					this.space();
-					this.parseExpr();
+					this.parseExpr(this.spaceIf(this.cfg.space_before_if_left_brace));
 					this.semicolon();
 					{
 						var _g11 = this.peek(0);
@@ -3367,9 +3335,8 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 							case 4:
 								this.last = this.token.elt;
 								this.token = this.token.next;
-								this.print("else",haxeprinter.Style.SKwd);
-								this.print(" ");
-								this.parseExpr();
+								this.addLast(haxeprinter.Style.SKwd,this.spaceIf(this.cfg.space_before_else_keyword));
+								this.parseExpr(this.spaceIf(this.cfg.space_before_else_left_brace));
 								break;
 							default:
 								null;
@@ -3383,60 +3350,57 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 22:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("new",haxeprinter.Style.SKwd);
-					this.print(" ");
+					this.addLast(haxeprinter.Style.SKwd);
 					this.parseDotPath();
 					this.expect(haxeparser.TokenDef.POpen);
-					this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseExpr),this.withSpace(this.cfg.space_between_function_args));
+					this.psep(haxeparser.TokenDef.Comma,(function(f1,a11,a21) {
+						return function() {
+							return f1(a11,a21);
+						};
+					})($bind(this,this.parseExpr),null,null));
 					this.expect(haxeparser.TokenDef.PClose);
 					break;
 				case 7:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("for",haxeprinter.Style.SKwd);
-					this.print(" ");
-					this.expect(haxeparser.TokenDef.POpen);
-					this.parseExpr();
+					this.addLast(haxeprinter.Style.SKwd);
+					this.expect(haxeparser.TokenDef.POpen,null,this.spaceIf(this.cfg.space_before_for_parenthesis));
+					this.parseExpr(this.spaceIf(this.cfg.space_before_for_left_brace));
 					this.expect(haxeparser.TokenDef.PClose);
 					this.parseExpr();
 					break;
 				case 5:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("while",haxeprinter.Style.SKwd);
-					this.print(" ");
-					this.expect(haxeparser.TokenDef.POpen);
+					this.addLast(haxeprinter.Style.SKwd,this.spaceIf(this.cfg.space_before_while_keyword));
+					this.expect(haxeparser.TokenDef.POpen,null,this.spaceIf(this.cfg.space_before_while_parenthesis));
 					this.parseExpr();
 					this.expect(haxeparser.TokenDef.PClose);
-					this.parseExpr();
+					this.parseExpr(this.spaceIf(this.cfg.space_before_while_left_brace));
 					break;
 				case 6:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("do",haxeprinter.Style.SKwd);
-					this.print(" ");
-					this.parseExpr();
-					this.expect(haxeparser.TokenDef.Kwd(haxeparser.Keyword.KwdWhile));
-					this.expect(haxeparser.TokenDef.POpen);
+					this.addLast(haxeprinter.Style.SKwd);
+					this.parseExpr(this.spaceIf(this.cfg.space_before_while_left_brace));
+					this.expect(haxeparser.TokenDef.Kwd(haxeparser.Keyword.KwdWhile),haxeprinter.Style.SKwd,this.spaceIf(this.cfg.space_before_while_keyword));
+					this.expect(haxeparser.TokenDef.POpen,null,this.spaceIf(this.cfg.space_before_while_parenthesis));
 					this.parseExpr();
 					this.expect(haxeparser.TokenDef.PClose);
 					break;
 				case 20:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("try",haxeprinter.Style.SKwd);
-					this.print(" ");
-					this.parseExpr();
+					this.addLast(haxeprinter.Style.SKwd);
+					this.parseExpr(this.spaceIf(this.cfg.space_before_try_left_brace));
 					this.plist($bind(this,this.parseCatch));
 					break;
 				case 14:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("switch",haxeprinter.Style.SKwd);
-					this.print(" ");
+					this.addLast(haxeprinter.Style.SKwd,null,this.spaceIf(this.cfg.space_before_switch_parenthesis));
 					this.parseExpr();
-					this.space();
-					this.expect(haxeparser.TokenDef.BrOpen);
+					this.expect(haxeparser.TokenDef.BrOpen,null,this.spaceIf(this.cfg.space_before_switch_left_brace));
 					this.moreTabs();
 					try {
 						while(true) {
@@ -3447,25 +3411,26 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 								case 15:
 									this.last = this.token.elt;
 									this.token = this.token.next;
-									this.newline();
-									this.print("case",haxeprinter.Style.SKwd);
-									this.print(" ");
-									this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseExpr),this.withSpace(true));
+									this.addLast(haxeprinter.Style.SKwd);
+									this.psep(haxeparser.TokenDef.Comma,(function(f2,a12,a22) {
+										return function() {
+											return f2(a12,a22);
+										};
+									})($bind(this,this.parseExpr),null,null));
 									{
 										var _g21 = this.peek(0);
 										switch(_g21.tok[1]) {
 										case 11:
 											this.last = this.token.elt;
 											this.token = this.token.next;
-											this.print(": ");
+											this.addLast();
 											break;
 										case 0:
 											switch(_g21.tok[2][1]) {
 											case 3:
 												this.last = this.token.elt;
 												this.token = this.token.next;
-												this.print("if",haxeprinter.Style.SKwd);
-												this.print(" ");
+												this.addLast(haxeprinter.Style.SKwd);
 												this.expect(haxeparser.TokenDef.POpen);
 												this.parseExpr();
 												this.expect(haxeparser.TokenDef.PClose);
@@ -3490,7 +3455,6 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 													throw "__break__";
 													break;
 												default:
-													this.newline();
 													this.parseBlockElement();
 												}
 												break;
@@ -3498,7 +3462,6 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 												throw "__break__";
 												break;
 											default:
-												this.newline();
 												this.parseBlockElement();
 											}
 										}
@@ -3508,8 +3471,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 								case 16:
 									this.last = this.token.elt;
 									this.token = this.token.next;
-									this.newline();
-									this.print("default",haxeprinter.Style.SKwd);
+									this.addLast(haxeprinter.Style.SKwd);
 									this.expect(haxeparser.TokenDef.DblDot);
 									this.moreTabs();
 									try {
@@ -3520,7 +3482,6 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 												throw "__break__";
 												break;
 											default:
-												this.newline();
 												this.parseBlockElement();
 											}
 										}
@@ -3534,7 +3495,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 							case 17:
 								this.last = this.token.elt;
 								this.token = this.token.next;
-								this.print("}");
+								this.addLast();
 								throw "__break__";
 								break;
 							default:
@@ -3552,14 +3513,14 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				var s3 = _g.tok[2];
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("$" + s3,haxeprinter.Style.SKwd);
+				this.addLast(haxeprinter.Style.SKwd);
 				{
 					var _g13 = this.peek(0);
 					switch(_g13.tok[1]) {
 					case 16:
 						this.last = this.token.elt;
 						this.token = this.token.next;
-						this.print("{");
+						this.addLast();
 						this.parseExpr();
 						this.expect(haxeparser.TokenDef.BrClose);
 						break;
@@ -3573,7 +3534,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 3:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print("-");
+					this.addLast();
 					this.parseExpr();
 					break;
 				default:
@@ -3583,19 +3544,23 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 16:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.parseBlockOrStructure();
+				this.parseBlockOrStructure(before,after);
 				break;
 			case 14:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("[");
-				this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseExpr),this.withSpace(true));
+				this.addLast();
+				this.psep(haxeparser.TokenDef.Comma,(function(f3,a13,a23) {
+					return function() {
+						return f3(a13,a23);
+					};
+				})($bind(this,this.parseExpr),null,null));
 				this.expect(haxeparser.TokenDef.BkClose);
 				break;
 			case 18:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("(");
+				this.addLast();
 				this.parseExpr();
 				{
 					var _g14 = this.peek(0);
@@ -3603,14 +3568,14 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					case 11:
 						this.last = this.token.elt;
 						this.token = this.token.next;
-						this.print(" : ");
+						this.addLast();
 						this.parseComplexType();
 						this.expect(haxeparser.TokenDef.PClose);
 						break;
 					case 19:
 						this.last = this.token.elt;
 						this.token = this.token.next;
-						this.print(")");
+						this.addLast();
 						break;
 					default:
 						throw new hxparse.Unexpected(this.peek(0),this.stream.curPos());
@@ -3621,15 +3586,14 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				var op = _g.tok[2];
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(new haxe.macro.Printer().printUnop(op));
+				this.addLast(null,this.spaceIf(this.cfg.space_around_unary_operators));
 				this.parseExpr();
 				break;
 			case 8:
 				var s4 = _g.tok[2];
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(s4);
-				this.print("...");
+				this.addLast();
 				this.parseExpr();
 				break;
 			default:
@@ -3645,15 +3609,19 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 18:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("(");
-				this.psep(haxeparser.TokenDef.Comma,$bind(this,this.parseExpr),this.withSpace(this.cfg.space_between_function_args));
+				this.addLast(null,this.spaceIf(this.cfg.space_before_method_call_parenthesis));
+				this.psep(haxeparser.TokenDef.Comma,(function(f,a1,a2) {
+					return function() {
+						return f(a1,a2);
+					};
+				})($bind(this,this.parseExpr),null,null));
 				this.expect(haxeparser.TokenDef.PClose);
 				this.parseExprNext();
 				break;
 			case 10:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(".");
+				this.addLast();
 				this.parseAnyIdent();
 				this.parseExprNext();
 				break;
@@ -3663,7 +3631,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 7:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.print(">");
+					this.addLast();
 					try {
 						while(true) {
 							var _g1 = this.peek(0);
@@ -3673,22 +3641,20 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 								case 7:
 									this.last = this.token.elt;
 									this.token = this.token.next;
-									this.print(">");
+									this.addLast();
 									break;
 								case 4:
 									this.last = this.token.elt;
 									this.token = this.token.next;
-									this.print("=");
+									this.addLast();
 									break;
 								default:
-									this.space();
 									this.parseExpr();
 									this.parseExprNext();
 									throw "__break__";
 								}
 								break;
 							default:
-								this.space();
 								this.parseExpr();
 								this.parseExprNext();
 								throw "__break__";
@@ -3699,9 +3665,30 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				default:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.space();
-					this.print(new haxe.macro.Printer().printBinop(op));
-					this.space();
+					var around;
+					switch(op[1]) {
+					case 20:
+						around = this.spaceIf(this.cfg.space_around_assignment_operators);
+						break;
+					case 14:case 15:
+						around = this.spaceIf(this.cfg.space_around_logical_operators);
+						break;
+					case 5:case 6:
+						around = this.spaceIf(this.cfg.space_around_equality_operators);
+						break;
+					case 9:case 7:case 8:case 10:
+						around = this.spaceIf(this.cfg.space_around_relational_operators);
+						break;
+					case 0:case 3:
+						around = this.spaceIf(this.cfg.space_around_additive_operators);
+						break;
+					case 1:case 2:case 19:
+						around = this.spaceIf(this.cfg.space_around_multiplicative_operators);
+						break;
+					default:
+						around = null;
+					}
+					this.addLast(null,around,around);
 					this.parseExpr();
 					this.parseExprNext();
 				}
@@ -3711,9 +3698,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 27:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.space();
-					this.print("in",haxeprinter.Style.SKwd);
-					this.print(" ");
+					this.addLast(haxeprinter.Style.SKwd);
 					this.parseExpr();
 					this.parseExprNext();
 					break;
@@ -3724,7 +3709,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 14:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print("[");
+				this.addLast();
 				this.parseExpr();
 				this.expect(haxeparser.TokenDef.BkClose);
 				this.parseExprNext();
@@ -3732,11 +3717,9 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 20:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(" ? ");
+				this.addLast();
 				this.parseExpr();
-				this.space();
 				this.expect(haxeparser.TokenDef.DblDot);
-				this.space();
 				this.parseExpr();
 				this.parseExprNext();
 				break;
@@ -3744,7 +3727,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				var op1 = _g.tok[2];
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(new haxe.macro.Printer().printUnop(op1));
+				this.addLast(null,this.spaceIf(this.cfg.space_around_unary_operators));
 				this.parseExprNext();
 				break;
 			default:
@@ -3752,13 +3735,8 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			}
 		}
 	}
-	,withSpace: function(b) {
-		if(b) return (function(f,s) {
-			return function() {
-				return f(s);
-			};
-		})($bind(this,this.print)," "); else return function() {
-		};
+	,spaceIf: function(flag) {
+		if(flag) return haxeprinter.Spacing.SSpace; else return haxeprinter.Spacing.SNone;
 	}
 	,semicolon: function() {
 		{
@@ -3767,19 +3745,16 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 9:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.print(";");
+				this.addLast();
 				break;
 			default:
 				null;
 			}
 		}
 	}
-	,expect: function(tok,printTok) {
-		if(printTok == null) printTok = true;
+	,expect: function(tok,style,before,after) {
 		if(!Type.enumEq(this.peek(0).tok,tok)) throw this.stream.curPos().format(this.input) + (":Expected " + Std.string(tok) + " but found " + Std.string(this.peek(0)));
-		if(printTok) this.print(haxeparser.TokenDefPrinter.print(tok));
-		this.last = this.token.elt;
-		this.token = this.token.next;
+		this.addNext(style,before,after);
 	}
 	,popt: function(f) {
 		try {
@@ -3791,13 +3766,12 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			} else throw(_);
 		}
 	}
-	,psep: function(sep,f,fSep) {
+	,psep: function(sep,f) {
 		while(true) try {
 			f();
 			var tok = this.peek(0);
 			if(tok.tok == sep) {
-				this.print(haxeparser.TokenDefPrinter.print(tok.tok));
-				fSep();
+				this.add(tok);
 				this.last = this.token.elt;
 				this.token = this.token.next;
 			} else return;
@@ -3817,41 +3791,51 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 	}
 	,__class__: haxeprinter.Formatter
 });
-haxeprinter.Style = { __ename__ : true, __constructs__ : ["SNormal","SDecl","SOperator","SConst","SKwd","SIdent","SString","SNumber","SType","SModifier","SComment","SMacro"] };
-haxeprinter.Style.SNormal = ["SNormal",0];
-haxeprinter.Style.SNormal.toString = $estr;
-haxeprinter.Style.SNormal.__enum__ = haxeprinter.Style;
-haxeprinter.Style.SDecl = ["SDecl",1];
+haxeprinter.Spacing = { __ename__ : true, __constructs__ : ["SSpace","SNewline","SIgnore","SNone"] };
+haxeprinter.Spacing.SSpace = ["SSpace",0];
+haxeprinter.Spacing.SSpace.toString = $estr;
+haxeprinter.Spacing.SSpace.__enum__ = haxeprinter.Spacing;
+haxeprinter.Spacing.SNewline = ["SNewline",1];
+haxeprinter.Spacing.SNewline.toString = $estr;
+haxeprinter.Spacing.SNewline.__enum__ = haxeprinter.Spacing;
+haxeprinter.Spacing.SIgnore = ["SIgnore",2];
+haxeprinter.Spacing.SIgnore.toString = $estr;
+haxeprinter.Spacing.SIgnore.__enum__ = haxeprinter.Spacing;
+haxeprinter.Spacing.SNone = ["SNone",3];
+haxeprinter.Spacing.SNone.toString = $estr;
+haxeprinter.Spacing.SNone.__enum__ = haxeprinter.Spacing;
+haxeprinter.Style = { __ename__ : true, __constructs__ : ["SDecl","SOperator","SConst","SKwd","SIdent","SString","SNumber","SType","SModifier","SComment","SMacro"] };
+haxeprinter.Style.SDecl = ["SDecl",0];
 haxeprinter.Style.SDecl.toString = $estr;
 haxeprinter.Style.SDecl.__enum__ = haxeprinter.Style;
-haxeprinter.Style.SOperator = ["SOperator",2];
+haxeprinter.Style.SOperator = ["SOperator",1];
 haxeprinter.Style.SOperator.toString = $estr;
 haxeprinter.Style.SOperator.__enum__ = haxeprinter.Style;
-haxeprinter.Style.SConst = ["SConst",3];
+haxeprinter.Style.SConst = ["SConst",2];
 haxeprinter.Style.SConst.toString = $estr;
 haxeprinter.Style.SConst.__enum__ = haxeprinter.Style;
-haxeprinter.Style.SKwd = ["SKwd",4];
+haxeprinter.Style.SKwd = ["SKwd",3];
 haxeprinter.Style.SKwd.toString = $estr;
 haxeprinter.Style.SKwd.__enum__ = haxeprinter.Style;
-haxeprinter.Style.SIdent = ["SIdent",5];
+haxeprinter.Style.SIdent = ["SIdent",4];
 haxeprinter.Style.SIdent.toString = $estr;
 haxeprinter.Style.SIdent.__enum__ = haxeprinter.Style;
-haxeprinter.Style.SString = ["SString",6];
+haxeprinter.Style.SString = ["SString",5];
 haxeprinter.Style.SString.toString = $estr;
 haxeprinter.Style.SString.__enum__ = haxeprinter.Style;
-haxeprinter.Style.SNumber = ["SNumber",7];
+haxeprinter.Style.SNumber = ["SNumber",6];
 haxeprinter.Style.SNumber.toString = $estr;
 haxeprinter.Style.SNumber.__enum__ = haxeprinter.Style;
-haxeprinter.Style.SType = ["SType",8];
+haxeprinter.Style.SType = ["SType",7];
 haxeprinter.Style.SType.toString = $estr;
 haxeprinter.Style.SType.__enum__ = haxeprinter.Style;
-haxeprinter.Style.SModifier = ["SModifier",9];
+haxeprinter.Style.SModifier = ["SModifier",8];
 haxeprinter.Style.SModifier.toString = $estr;
 haxeprinter.Style.SModifier.__enum__ = haxeprinter.Style;
-haxeprinter.Style.SComment = ["SComment",10];
+haxeprinter.Style.SComment = ["SComment",9];
 haxeprinter.Style.SComment.toString = $estr;
 haxeprinter.Style.SComment.__enum__ = haxeprinter.Style;
-haxeprinter.Style.SMacro = ["SMacro",11];
+haxeprinter.Style.SMacro = ["SMacro",10];
 haxeprinter.Style.SMacro.toString = $estr;
 haxeprinter.Style.SMacro.__enum__ = haxeprinter.Style;
 hxparse._LexEngine.Transition = function(chars) {
@@ -3900,6 +3884,36 @@ hxparse.Parser.prototype = {
 	}
 	,curPos: function() {
 		return this.stream.curPos();
+	}
+	,parseSeparated: function(separatorFunc,f) {
+		var acc = [];
+		while(true) {
+			acc.push(f());
+			if(separatorFunc(this.peek(0))) {
+				this.last = this.token.elt;
+				this.token = this.token.next;
+			} else break;
+		}
+		return acc;
+	}
+	,parseOptional: function(f) {
+		try {
+			return f();
+		} catch( e ) {
+			if( js.Boot.__instanceof(e,hxparse.NoMatch) ) {
+				return null;
+			} else throw(e);
+		}
+	}
+	,parseRepeat: function(f) {
+		var acc = [];
+		while(true) try {
+			acc.push(f());
+		} catch( e ) {
+			if( js.Boot.__instanceof(e,hxparse.NoMatch) ) {
+				return acc;
+			} else throw(e);
+		}
 	}
 	,noMatch: function() {
 		return new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -3968,7 +3982,7 @@ var Bool = Boolean;
 Bool.__ename__ = ["Bool"];
 var Class = { __name__ : ["Class"]};
 var Enum = { };
-haxe.Resource.content = [{ name : "config-default", data : "ewoJImN1ZGRsZV9tZXRob2RfYnJhY2VzIjpmYWxzZSwKCSJjdWRkbGVfdHlwZV9icmFjZXMiOmZhbHNlLAoJImVtcHR5X2xpbmVfYXRfZW5kX29mX2ZpbGUiOnRydWUsCgkiZW1wdHlfbGluZV9iZWZvcmVfaW1wb3J0cyI6ZmFsc2UsCgkiZW1wdHlfbGluZV9iZWZvcmVfdHlwZSI6dHJ1ZSwKCSJlbXB0eV9saW5lX2JldHdlZW5fZW51bV9jb25zdHJ1Y3RvcnMiOmZhbHNlLAoJImVtcHR5X2xpbmVfYmV0d2Vlbl9maWVsZHMiOnRydWUsCgkiZW1wdHlfbGluZV9iZXR3ZWVuX3R5cGVkZWZfZmllbGRzIjpmYWxzZSwKCSJleHRlbmRzX29uX25ld2xpbmUiOmZhbHNlLAoJImZ1bmN0aW9uX2FyZ19vbl9uZXdsaW5lIjpmYWxzZSwKCSJpbXBsZW1lbnRzX29uX25ld2xpbmUiOmZhbHNlLAoJImlubGluZV9lbXB0eV9icmFjZXMiOmZhbHNlLAoJIm1heGltdW1fbGluZV9sZW5ndGgiOjEwMCwKCSJtb2RpZmllcl9vcmRlciI6WyJvdmVycmlkZSIsICJwdWJsaWMiLCAicHJpdmF0ZSIsICJzdGF0aWMiLCAiZXh0ZXJuIiwgImR5bmFtaWMiLCAiaW5saW5lIiwgIm1hY3JvIl0sCgkicHJpbnRfcm9vdF9wYWNrYWdlIjpmYWxzZSwKCSJyZW1vdmVfcHJpdmF0ZV9maWVsZF9tb2RpZmllciI6ZmFsc2UsCgkic3BhY2VfYWZ0ZXJfc3RydWN0dXJlX2NvbG9uIjpmYWxzZSwKCSJzcGFjZV9hZnRlcl90eXBlX2hpbnRfY29sb24iOmZhbHNlLAoJInNwYWNlX2Fyb3VuZF9mdW5jdGlvbl9hcmdfYXNzaWduIjpmYWxzZSwKCSJzcGFjZV9hcm91bmRfcHJvcGVydHlfYXNzaWduIjp0cnVlLAoJInNwYWNlX2Fyb3VuZF90eXBlZGVmX2Fzc2lnbiI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfc3RydWN0dXJlX2NvbG9uIjpmYWxzZSwKCSJzcGFjZV9iZWZvcmVfdHlwZV9oaW50X2NvbG9uIjpmYWxzZSwKCSJzcGFjZV9iZXR3ZWVuX2Fub25fdHlwZV9maWVsZHMiOnRydWUsCgkic3BhY2VfYmV0d2Vlbl9lbnVtX2NvbnN0cnVjdG9yX2FyZ3MiOmZhbHNlLAoJInNwYWNlX2JldHdlZW5fZnVuY3Rpb25fYXJncyI6dHJ1ZSwKCSJzcGFjZV9iZXR3ZWVuX3Byb3BlcnR5X2dldF9zZXQiOnRydWUsCgkic3BhY2VfYmV0d2Vlbl90eXBlX3BhcmFtX2NvbnN0cmFpbnRzIjp0cnVlLAoJInNwYWNlX2JldHdlZW5fdHlwZV9wYXJhbXMiOnRydWUKfQ"},{ name : "config", data : "e30"},{ name : "source", data : "LyoKCUNvbW1lbnQKKi8KcGFja2FnZS8qIENvbW1lbnQgKi9wYWNrLnBhY2s7Ly8gQ29tbWVudExpbmUKCi8qCglFbXB0eSB0eXBlCiovCiNpZiBqcyBjbGFzcyBFbXB0eUNsYXNzCnsKfQojZW5kCgovKgoJQ2xhc3MKKi8KZXh0ZXJuICNpZiBqcyBwcml2YXRlICNlbmQgY2xhc3MgTXlDbGFzcyBleHRlbmRzIFN1cGVyQ2xhc3MgaW1wbGVtZW50cyBJbnRlcmZhY2UKewoJLyoKCQlDb21tZW50CgkqLwoJdmFyIHZhcmlhYmxlOkludCA9IDA7CgoJLyoKCQlDb21tZW50CgkqLwoJdmFyIHByb3BlcnR5KGdldCwgc2V0KTpJbnQgPSAwOwp9CgovKgoJRW51bQoqLwpleHRlcm4gZW51bSBNeUVudW0KewoJTXlFbnVtVmFsdWU7Cn0"}];
+haxe.Resource.content = [{ name : "config-default", data : "ewoJImNvbmRlbnNlX211bHRpcGxlX2VtcHR5X2xpbmVzIjp0cnVlLAoJImNvbmRlbnNlX211bHRpcGxlX3NwYWNlcyI6dHJ1ZSwKCSJlbXB0eV9saW5lX2F0X2VuZF9vZl9maWxlIjp0cnVlLAoJInNwYWNlX2Fyb3VuZF9hZGRpdGl2ZV9vcGVyYXRvcnMiOnRydWUsCgkic3BhY2VfYXJvdW5kX2Fzc2lnbm1lbnRfb3BlcmF0b3JzIjp0cnVlLAoJInNwYWNlX2Fyb3VuZF9lcXVhbGl0eV9vcGVyYXRvcnMiOnRydWUsCgkic3BhY2VfYXJvdW5kX2xvZ2ljYWxfb3BlcmF0b3JzIjp0cnVlLAoJInNwYWNlX2Fyb3VuZF9tdWx0aXBsaWNhdGl2ZV9vcGVyYXRvcnMiOnRydWUsCgkic3BhY2VfYXJvdW5kX3JlbGF0aW9uYWxfb3BlcmF0b3JzIjp0cnVlLAoJInNwYWNlX2Fyb3VuZF91bmFyeV9vcGVyYXRvcnMiOnRydWUsCgkic3BhY2VfYmVmb3JlX2NhdGNoX2tleXdvcmQiOnRydWUsCgkic3BhY2VfYmVmb3JlX2NhdGNoX2xlZnRfYnJhY2UiOnRydWUsCgkic3BhY2VfYmVmb3JlX2NhdGNoX3BhcmVudGhlc2lzIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9lbHNlX2tleXdvcmQiOnRydWUsCgkic3BhY2VfYmVmb3JlX2Vsc2VfbGVmdF9icmFjZSI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfZm9yX2xlZnRfYnJhY2UiOnRydWUsCgkic3BhY2VfYmVmb3JlX2Zvcl9wYXJlbnRoZXNpcyI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfaWZfbGVmdF9icmFjZSI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfaWZfcGFyZW50aGVzaXMiOnRydWUsCgkic3BhY2VfYmVmb3JlX21ldGhvZF9jYWxsX3BhcmVudGhlc2lzIjpmYWxzZSwKCSJzcGFjZV9iZWZvcmVfbWV0aG9kX2RlY2xhcmF0aW9uX3BhcmVudGhlc2lzIjpmYWxzZSwKCSJzcGFjZV9iZWZvcmVfbWV0aG9kX2xlZnRfYnJhY2UiOnRydWUsCgkic3BhY2VfYmVmb3JlX3N3aXRjaF9sZWZ0X2JyYWNlIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9zd2l0Y2hfcGFyZW50aGVzaXMiOnRydWUsCgkic3BhY2VfYmVmb3JlX3RyeV9sZWZ0X2JyYWNlIjp0cnVlLAoJInNwYWNlX2JlZm9yZV93aGlsZV9rZXl3b3JkIjp0cnVlLAoJInNwYWNlX2JlZm9yZV93aGlsZV9sZWZ0X2JyYWNlIjp0cnVlLAoJInNwYWNlX2JlZm9yZV93aGlsZV9wYXJlbnRoZXNpcyI6dHJ1ZQp9"},{ name : "config", data : "e30"},{ name : "source", data : "LyoKCUNvbW1lbnQKKi8KcGFja2FnZS8qIENvbW1lbnQgKi9wYWNrLnBhY2s7Ly8gQ29tbWVudExpbmUKCi8qCglFbXB0eSB0eXBlCiovCiNpZiBqcyBjbGFzcyBFbXB0eUNsYXNzCnsKfQojZW5kCgovKgoJQ2xhc3MKKi8KZXh0ZXJuICNpZiBqcyBwcml2YXRlICNlbmQgY2xhc3MgTXlDbGFzcyBleHRlbmRzIFN1cGVyQ2xhc3MgaW1wbGVtZW50cyBJbnRlcmZhY2UKewoJLyoKCQlDb21tZW50CgkqLwoJdmFyIHZhcmlhYmxlOkludCA9IDA7CgoJLyoKCQlDb21tZW50CgkqLwoJdmFyIHByb3BlcnR5KGdldCwgc2V0KTpJbnQgPSAwOwoKCXB1YmxpYyBmdW5jdGlvbiBkb1RoaW5ncygpCgl7CgkJdmFyIGZvbyA9IDEwOwoKCQkvLyB0aGluZ3MgYmVpbmcgZG9uZQoJCWZ1bmN0aW9uIGlubGluZUZ1bmMoKXt9CgoJCXZhciBhID0gLTEgKyAyIC8gMzsKCQlhICs9IDE7CgkJYSsrOwoKCQlpZiAoZmxhZzEgPT0gdHJ1ZSB8fCAoZmxhZzIgIT0gdHJ1ZSAmJiBmbGFnMyA8IDEpKSB7CgkJCWlubGluZUZ1bmMoKTsKCQl9IGVsc2UgaWYgKHRydWUpIHsKCQkJLy8gZm9vCgkJfSBlbHNlIHsKCQkJLy8gYmFyCgkJfQoKCQlmb3IgKGkgaW4gMC4uLjEwKSB7CgkJCWEgKz0gMTA7CgkJCXRyYWNlKCJIZWxsbyIpOwoJCX0KCgkJd2hpbGUgKGZhbHNlKSB7CgkJCXRyYWNlKCJIZWxsbyIpOwoJCX0KCgkJZG8gewoJCQl0cmFjZSgiQm9vIik7CgkJfSB3aGlsZSAoZmFsc2UpCgoJCXN3aXRjaCAoZm9vKSB7CgkJCWNhc2UgImJhciI6CgkJCWRlZmF1bHQ6CgkJfQoKCQl0cnkgewoJCQl0aGluZ3MoKTsKCQl9IGNhdGNoIChlOkR5bmFtaWMpIHsKCQkJb3RoZXJUaGluZ3MoKTsKCQl9Cgl9Cn0KCi8qCglFbnVtCiovCmV4dGVybiBlbnVtIE15RW51bQp7CglNeUVudW1WYWx1ZTsKfQ"}];
 byte._LittleEndianWriter.LittleEndianWriter_Impl_.LN2 = Math.log(2);
 haxe.crypto.Base64.CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 haxe.crypto.Base64.BYTES = haxe.io.Bytes.ofString(haxe.crypto.Base64.CHARS);
@@ -4028,21 +4042,24 @@ haxeparser.HaxeLexer.ident = "_*[a-z][a-zA-Z0-9_]*|_+|_+[0-9][_a-zA-Z0-9]*";
 haxeparser.HaxeLexer.idtype = "_*[A-Z][a-zA-Z0-9_]*";
 haxeparser.HaxeLexer.tok = hxparse.Lexer.buildRuleset([{ rule : "", func : function(lexer) {
 	return haxeparser.HaxeLexer.mk(lexer,haxeparser.TokenDef.Eof);
-}},{ rule : "[\r\n\t ]", func : function(lexer1) {
-	return lexer1.token(haxeparser.HaxeLexer.tok);
+}},{ rule : "[\r\n\t ]+", func : function(lexer1) {
+	var space = lexer1.current;
+	var token = lexer1.token(haxeparser.HaxeLexer.tok);
+	token.space = space;
+	return token;
 }},{ rule : "0x[0-9a-fA-F]+", func : function(lexer2) {
 	return haxeparser.HaxeLexer.mk(lexer2,haxeparser.TokenDef.Const(haxe.macro.Constant.CInt(lexer2.current)));
 }},{ rule : "[0-9]+", func : function(lexer3) {
 	return haxeparser.HaxeLexer.mk(lexer3,haxeparser.TokenDef.Const(haxe.macro.Constant.CInt(lexer3.current)));
-}},{ rule : "[0-9]+.[0-9]+", func : function(lexer4) {
+}},{ rule : "[0-9]+\\.[0-9]+", func : function(lexer4) {
 	return haxeparser.HaxeLexer.mk(lexer4,haxeparser.TokenDef.Const(haxe.macro.Constant.CFloat(lexer4.current)));
-}},{ rule : ".[0-9]+", func : function(lexer5) {
+}},{ rule : "\\.[0-9]+", func : function(lexer5) {
 	return haxeparser.HaxeLexer.mk(lexer5,haxeparser.TokenDef.Const(haxe.macro.Constant.CFloat(lexer5.current)));
 }},{ rule : "[0-9]+[eE][\\+\\-]?[0-9]+", func : function(lexer6) {
 	return haxeparser.HaxeLexer.mk(lexer6,haxeparser.TokenDef.Const(haxe.macro.Constant.CFloat(lexer6.current)));
-}},{ rule : "[0-9]+.[0-9]*[eE][\\+\\-]?[0-9]+", func : function(lexer7) {
+}},{ rule : "[0-9]+\\.[0-9]*[eE][\\+\\-]?[0-9]+", func : function(lexer7) {
 	return haxeparser.HaxeLexer.mk(lexer7,haxeparser.TokenDef.Const(haxe.macro.Constant.CFloat(lexer7.current)));
-}},{ rule : "[0-9]+...", func : function(lexer8) {
+}},{ rule : "[0-9]+\\.\\.\\.", func : function(lexer8) {
 	return haxeparser.HaxeLexer.mk(lexer8,haxeparser.TokenDef.IntInterval(HxOverrides.substr(lexer8.current,0,-3)));
 }},{ rule : "//[^\n\r]*", func : function(lexer9) {
 	return haxeparser.HaxeLexer.mk(lexer9,haxeparser.TokenDef.CommentLine(HxOverrides.substr(lexer9.current,2,null)));
@@ -4084,7 +4101,7 @@ haxeparser.HaxeLexer.tok = hxparse.Lexer.buildRuleset([{ rule : "", func : funct
 	return haxeparser.HaxeLexer.mk(lexer27,haxeparser.TokenDef.Binop(haxe.macro.Binop.OpShl));
 }},{ rule : "->", func : function(lexer28) {
 	return haxeparser.HaxeLexer.mk(lexer28,haxeparser.TokenDef.Arrow);
-}},{ rule : "...", func : function(lexer29) {
+}},{ rule : "\\.\\.\\.", func : function(lexer29) {
 	return haxeparser.HaxeLexer.mk(lexer29,haxeparser.TokenDef.Binop(haxe.macro.Binop.OpInterval));
 }},{ rule : "=>", func : function(lexer30) {
 	return haxeparser.HaxeLexer.mk(lexer30,haxeparser.TokenDef.Binop(haxe.macro.Binop.OpArrow));
@@ -4100,7 +4117,7 @@ haxeparser.HaxeLexer.tok = hxparse.Lexer.buildRuleset([{ rule : "", func : funct
 	return haxeparser.HaxeLexer.mk(lexer35,haxeparser.TokenDef.DblDot);
 }},{ rule : ",", func : function(lexer36) {
 	return haxeparser.HaxeLexer.mk(lexer36,haxeparser.TokenDef.Comma);
-}},{ rule : ".", func : function(lexer37) {
+}},{ rule : "\\.", func : function(lexer37) {
 	return haxeparser.HaxeLexer.mk(lexer37,haxeparser.TokenDef.Dot);
 }},{ rule : "%", func : function(lexer38) {
 	return haxeparser.HaxeLexer.mk(lexer38,haxeparser.TokenDef.Binop(haxe.macro.Binop.OpMod));
@@ -4147,9 +4164,9 @@ haxeparser.HaxeLexer.tok = hxparse.Lexer.buildRuleset([{ rule : "", func : funct
 			throw new haxeparser.LexerError(haxeparser.LexerErrorMsg.UnterminatedString,haxeparser.HaxeLexer.mkPos(pmin));
 		} else throw(e);
 	}
-	var token = haxeparser.HaxeLexer.mk(lexer55,haxeparser.TokenDef.Const(haxe.macro.Constant.CString(haxeparser.HaxeLexer.buf.b)));
-	token.pos.min = pmin.pmin;
-	return token;
+	var token1 = haxeparser.HaxeLexer.mk(lexer55,haxeparser.TokenDef.Const(haxe.macro.Constant.CString(haxeparser.HaxeLexer.buf.b)));
+	token1.pos.min = pmin.pmin;
+	return token1;
 }},{ rule : "'", func : function(lexer56) {
 	haxeparser.HaxeLexer.buf = new StringBuf();
 	var pmin1 = new hxparse.Position(lexer56.source,lexer56.pos - lexer56.current.length,lexer56.pos);
@@ -4161,9 +4178,9 @@ haxeparser.HaxeLexer.tok = hxparse.Lexer.buildRuleset([{ rule : "", func : funct
 			throw new haxeparser.LexerError(haxeparser.LexerErrorMsg.UnterminatedString,haxeparser.HaxeLexer.mkPos(pmin1));
 		} else throw(e1);
 	}
-	var token1 = haxeparser.HaxeLexer.mk(lexer56,haxeparser.TokenDef.Const(haxe.macro.Constant.CString(haxeparser.HaxeLexer.buf.b)));
-	token1.pos.min = pmin1.pmin;
-	return token1;
+	var token2 = haxeparser.HaxeLexer.mk(lexer56,haxeparser.TokenDef.Const(haxe.macro.Constant.CString(haxeparser.HaxeLexer.buf.b)));
+	token2.pos.min = pmin1.pmin;
+	return token2;
 }},{ rule : "~/", func : function(lexer57) {
 	haxeparser.HaxeLexer.buf = new StringBuf();
 	var pmin2 = new hxparse.Position(lexer57.source,lexer57.pos - lexer57.current.length,lexer57.pos);
@@ -4175,9 +4192,9 @@ haxeparser.HaxeLexer.tok = hxparse.Lexer.buildRuleset([{ rule : "", func : funct
 			throw new haxeparser.LexerError(haxeparser.LexerErrorMsg.UnterminatedRegExp,haxeparser.HaxeLexer.mkPos(pmin2));
 		} else throw(e2);
 	}
-	var token2 = haxeparser.HaxeLexer.mk(lexer57,haxeparser.TokenDef.Const(haxe.macro.Constant.CRegexp(haxeparser.HaxeLexer.buf.b,info.opt)));
-	token2.pos.min = pmin2.pmin;
-	return token2;
+	var token3 = haxeparser.HaxeLexer.mk(lexer57,haxeparser.TokenDef.Const(haxe.macro.Constant.CRegexp(haxeparser.HaxeLexer.buf.b,info.opt)));
+	token3.pos.min = pmin2.pmin;
+	return token3;
 }},{ rule : "/\\*", func : function(lexer58) {
 	haxeparser.HaxeLexer.buf = new StringBuf();
 	var pmin3 = new hxparse.Position(lexer58.source,lexer58.pos - lexer58.current.length,lexer58.pos);
@@ -4189,9 +4206,9 @@ haxeparser.HaxeLexer.tok = hxparse.Lexer.buildRuleset([{ rule : "", func : funct
 			throw new haxeparser.LexerError(haxeparser.LexerErrorMsg.UnclosedComment,haxeparser.HaxeLexer.mkPos(pmin3));
 		} else throw(e3);
 	}
-	var token3 = haxeparser.HaxeLexer.mk(lexer58,haxeparser.TokenDef.Comment(haxeparser.HaxeLexer.buf.b));
-	token3.pos.min = pmin3.pmin;
-	return token3;
+	var token4 = haxeparser.HaxeLexer.mk(lexer58,haxeparser.TokenDef.Comment(haxeparser.HaxeLexer.buf.b));
+	token4.pos.min = pmin3.pmin;
+	return token4;
 }},{ rule : "(#)(_*[a-z][a-zA-Z0-9_]*|_+|_+[0-9][_a-zA-Z0-9]*)", func : function(lexer59) {
 	return haxeparser.HaxeLexer.mk(lexer59,haxeparser.TokenDef.Sharp(HxOverrides.substr(lexer59.current,1,null)));
 }},{ rule : "$[_a-zA-Z0-9]*", func : function(lexer60) {
