@@ -1925,6 +1925,10 @@ haxeprinter.Formatter.__super__ = hxparse.Parser_haxeparser_HaxeLexer_haxeparser
 haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_haxeparser_Token.prototype,{
 	add: function(token,style,before,after) {
 		var space = token.space;
+		if(this.cfg.condense_multiple_spaces) space = new EReg(" +","").replace(space," ");
+		if(this.cfg.condense_multiple_empty_lines) space = new EReg("\n{3,}","").replace(space,"\n\n");
+		space = new EReg("(^|\n)[\t ]{2,}","").replace(space,"$" + "1" + this.tabs);
+		var newline = space.indexOf("\n") > -1;
 		if(before == null) {
 			var _g = token.tok;
 			switch(_g[1]) {
@@ -1951,12 +1955,12 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			var _g1 = token.tok;
 			switch(_g1[1]) {
 			case 0:
-				if(new EReg("\\w","").match(this.lastChar)) before = haxeprinter.Spacing.SSpace;
+				if(new EReg("\\w","").match(this.lastChar)) before = haxeprinter.Spacing.SIgnore;
 				break;
 			case 1:
 				switch(_g1[2][1]) {
 				case 3:
-					if(new EReg("\\w","").match(this.lastChar)) before = haxeprinter.Spacing.SSpace;
+					if(new EReg("\\w","").match(this.lastChar)) before = haxeprinter.Spacing.SIgnore;
 					break;
 				default:
 				}
@@ -1965,16 +1969,12 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			}
 		}
 		if(after == null) after = haxeprinter.Spacing.SNone;
-		if(this.cfg.condense_multiple_spaces) space = new EReg(" +","").replace(space," ");
-		if(this.cfg.condense_multiple_empty_lines) space = new EReg("\n{3,}","").replace(space,"\n\n");
-		space = new EReg("(^|\n)[\t ]{2,}","").replace(space,"$" + "1" + this.tabs);
-		var newline = space.indexOf("\n") > -1;
 		switch(before[1]) {
 		case 0:
-			if(newline) space = space; else if(this.lastChar == " ") space = ""; else space = " ";
+			if(this.lastChar == " ") space = ""; else space = " ";
 			break;
 		case 1:
-			space = "\n";
+			space = "\n" + this.tabs;
 			break;
 		case 2:
 			space = space;
@@ -2293,7 +2293,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			return function() {
 				return f1(a11,a21);
 			};
-		})($bind(this,this.parseExpr),this.spaceIf(this.cfg.space_before_method_left_brace),null));
+		})($bind(this,this.parseExpr),this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_method_left_brace),null));
 	}
 	,parseFunctionArgument: function() {
 		{
@@ -2340,7 +2340,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 17:case 18:case 19:case 25:case 35:case 41:case 33:case 31:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.addLast(haxeprinter.Style.SKwd,haxeprinter.Spacing.SSpace);
+					this.addLast(haxeprinter.Style.SKwd);
 					break;
 				default:
 					return;
@@ -2501,7 +2501,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					this.parseAnyIdent(haxeprinter.Style.SType,haxeprinter.Spacing.SSpace);
 					this.popt($bind(this,this.parseTypeParameters));
 					this.parseHeritance();
-					this.expect(haxeparser.TokenDef.BrOpen);
+					this.expect(haxeparser.TokenDef.BrOpen,null,this.spaceOrNewline(this.cfg.brace_on_newline,true));
 					this.moreTabs();
 					this.parseClassFields(false);
 					break;
@@ -2511,7 +2511,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					this.addLast(haxeprinter.Style.SDecl);
 					this.parseAnyIdent(haxeprinter.Style.SType,haxeprinter.Spacing.SSpace);
 					this.popt($bind(this,this.parseTypeParameters));
-					this.expect(haxeparser.TokenDef.BrOpen);
+					this.expect(haxeparser.TokenDef.BrOpen,null,this.spaceOrNewline(this.cfg.brace_on_newline,true));
 					this.moreTabs();
 					this.parseEnumFields(false);
 					break;
@@ -2533,7 +2533,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					this.popt($bind(this,this.parseTypeParameters));
 					this.popt($bind(this,this.parseAbstractThis));
 					this.popt($bind(this,this.parseAbstractRelations));
-					this.expect(haxeparser.TokenDef.BrOpen);
+					this.expect(haxeparser.TokenDef.BrOpen,null,this.spaceOrNewline(this.cfg.brace_on_newline,true));
 					this.moreTabs();
 					this.parseEnumFields(false);
 					break;
@@ -2996,13 +2996,13 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 				case 21:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.addLast(haxeprinter.Style.SKwd,this.spaceIf(this.cfg.space_before_catch_keyword));
+					this.addLast(haxeprinter.Style.SKwd,this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_catch_keyword));
 					this.expect(haxeparser.TokenDef.POpen,null,this.spaceIf(this.cfg.space_before_catch_parenthesis),this.spaceIf(this.cfg.space_within_catch_parenthesis));
 					this.parseAnyIdent();
 					this.expect(haxeparser.TokenDef.DblDot);
 					this.parseComplexType();
 					this.expect(haxeparser.TokenDef.PClose,null,this.spaceIf(this.cfg.space_within_catch_parenthesis));
-					this.parseExpr(this.spaceIf(this.cfg.space_before_catch_left_brace));
+					this.parseExpr(this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_catch_left_brace));
 					break;
 				default:
 					throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -3184,8 +3184,8 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 			case 17:
 				this.last = this.token.elt;
 				this.token = this.token.next;
-				this.addLast();
 				this.lessTabs();
+				this.addLast();
 				break;
 			default:
 				this.plist($bind(this,this.parseBlockElement));
@@ -3345,7 +3345,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					this.expect(haxeparser.TokenDef.POpen,null,this.spaceIf(this.cfg.space_before_if_parenthesis),this.spaceIf(this.cfg.space_within_if_parenthesis));
 					this.parseExpr();
 					this.expect(haxeparser.TokenDef.PClose,null,this.spaceIf(this.cfg.space_within_if_parenthesis));
-					this.parseExpr(this.spaceIf(this.cfg.space_before_if_left_brace));
+					this.parseExpr(this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_if_left_brace));
 					this.semicolon();
 					{
 						var _g11 = this.peek(0);
@@ -3355,8 +3355,8 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 							case 4:
 								this.last = this.token.elt;
 								this.token = this.token.next;
-								this.addLast(haxeprinter.Style.SKwd,this.spaceIf(this.cfg.space_before_else_keyword));
-								this.parseExpr(this.spaceIf(this.cfg.space_before_else_left_brace));
+								this.addLast(haxeprinter.Style.SKwd,this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_else_keyword));
+								this.parseExpr(this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_else_left_brace));
 								break;
 							default:
 								null;
@@ -3387,23 +3387,23 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					this.expect(haxeparser.TokenDef.POpen,null,this.spaceIf(this.cfg.space_before_for_parenthesis),this.spaceIf(this.cfg.space_within_for_parenthesis));
 					this.parseExpr();
 					this.expect(haxeparser.TokenDef.PClose,null,this.spaceIf(this.cfg.space_within_for_parenthesis));
-					this.parseExpr(this.spaceIf(this.cfg.space_before_for_left_brace));
+					this.parseExpr(this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_for_left_brace));
 					break;
 				case 5:
 					this.last = this.token.elt;
 					this.token = this.token.next;
-					this.addLast(haxeprinter.Style.SKwd,this.spaceIf(this.cfg.space_before_while_keyword));
+					this.addLast(haxeprinter.Style.SKwd);
 					this.expect(haxeparser.TokenDef.POpen,null,this.spaceIf(this.cfg.space_before_while_parenthesis),this.spaceIf(this.cfg.space_within_while_parenthesis));
 					this.parseExpr();
 					this.expect(haxeparser.TokenDef.PClose,null,this.spaceIf(this.cfg.space_within_while_parenthesis));
-					this.parseExpr(this.spaceIf(this.cfg.space_before_while_left_brace));
+					this.parseExpr(this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_while_left_brace));
 					break;
 				case 6:
 					this.last = this.token.elt;
 					this.token = this.token.next;
 					this.addLast(haxeprinter.Style.SKwd);
-					this.parseExpr(this.spaceIf(this.cfg.space_before_while_left_brace));
-					this.expect(haxeparser.TokenDef.Kwd(haxeparser.Keyword.KwdWhile),haxeprinter.Style.SKwd,this.spaceIf(this.cfg.space_before_while_keyword));
+					this.parseExpr(this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_while_left_brace));
+					this.expect(haxeparser.TokenDef.Kwd(haxeparser.Keyword.KwdWhile),haxeprinter.Style.SKwd,this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_while_keyword));
 					this.expect(haxeparser.TokenDef.POpen,null,this.spaceIf(this.cfg.space_before_while_parenthesis),this.spaceIf(this.cfg.space_within_while_parenthesis));
 					this.parseExpr();
 					this.expect(haxeparser.TokenDef.PClose,null,this.spaceIf(this.cfg.space_within_while_parenthesis));
@@ -3412,7 +3412,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 					this.last = this.token.elt;
 					this.token = this.token.next;
 					this.addLast(haxeprinter.Style.SKwd);
-					this.parseExpr(this.spaceIf(this.cfg.space_before_try_left_brace));
+					this.parseExpr(this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_try_left_brace));
 					this.plist($bind(this,this.parseCatch));
 					break;
 				case 14:
@@ -3433,7 +3433,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 							this.parseExpr();
 						}
 					}
-					this.expect(haxeparser.TokenDef.BrOpen,null,this.spaceIf(this.cfg.space_before_switch_left_brace));
+					this.expect(haxeparser.TokenDef.BrOpen,null,this.spaceOrNewline(this.cfg.brace_on_newline,this.cfg.space_before_switch_left_brace));
 					this.moreTabs();
 					try {
 						while(true) {
@@ -3444,7 +3444,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 								case 15:
 									this.last = this.token.elt;
 									this.token = this.token.next;
-									this.addLast(haxeprinter.Style.SKwd);
+									this.addLast(haxeprinter.Style.SKwd,null,haxeprinter.Spacing.SSpace);
 									this.psep(haxeparser.TokenDef.Comma,(function(f2,a12,a22) {
 										return function() {
 											return f2(a12,a22);
@@ -3528,6 +3528,7 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 							case 17:
 								this.last = this.token.elt;
 								this.token = this.token.next;
+								this.lessTabs();
 								this.addLast();
 								throw "__break__";
 								break;
@@ -3536,7 +3537,6 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 							}
 						}
 					} catch( e ) { if( e != "__break__" ) throw e; }
-					this.lessTabs();
 					break;
 				default:
 					throw new hxparse.NoMatch(this.stream.curPos(),this.peek(0));
@@ -3785,6 +3785,9 @@ haxeprinter.Formatter.prototype = $extend(hxparse.Parser_haxeparser_HaxeLexer_ha
 	,spaceIf: function(flag) {
 		if(flag) return haxeprinter.Spacing.SSpace; else return haxeprinter.Spacing.SNone;
 	}
+	,spaceOrNewline: function(newline,space) {
+		if(newline) return haxeprinter.Spacing.SNewline; else return this.spaceIf(space);
+	}
 	,semicolon: function() {
 		{
 			var _g = this.peek(0);
@@ -4029,7 +4032,7 @@ var Bool = Boolean;
 Bool.__ename__ = ["Bool"];
 var Class = { __name__ : ["Class"]};
 var Enum = { };
-haxe.Resource.content = [{ name : "config-default", data : "ewoJImNvbmRlbnNlX211bHRpcGxlX2VtcHR5X2xpbmVzIjp0cnVlLAoJImNvbmRlbnNlX211bHRpcGxlX3NwYWNlcyI6dHJ1ZSwKCSJlbXB0eV9saW5lX2F0X2VuZF9vZl9maWxlIjp0cnVlLAoJInNwYWNlX2FmdGVyX3R5cGVfaGludF9jb2xvbiI6ZmFsc2UsCgkic3BhY2VfYXJvdW5kX2FkZGl0aXZlX29wZXJhdG9ycyI6dHJ1ZSwKCSJzcGFjZV9hcm91bmRfYXJyb3ciOnRydWUsCgkic3BhY2VfYXJvdW5kX2Fzc2lnbm1lbnRfb3BlcmF0b3JzIjp0cnVlLAoJInNwYWNlX2Fyb3VuZF9lcXVhbGl0eV9vcGVyYXRvcnMiOnRydWUsCgkic3BhY2VfYXJvdW5kX2xvZ2ljYWxfb3BlcmF0b3JzIjp0cnVlLAoJInNwYWNlX2Fyb3VuZF9tdWx0aXBsaWNhdGl2ZV9vcGVyYXRvcnMiOnRydWUsCgkic3BhY2VfYXJvdW5kX3JlbGF0aW9uYWxfb3BlcmF0b3JzIjp0cnVlLAoJInNwYWNlX2Fyb3VuZF91bmFyeV9vcGVyYXRvcnMiOmZhbHNlLAoJInNwYWNlX2JlZm9yZV9jYXRjaF9rZXl3b3JkIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9jYXRjaF9sZWZ0X2JyYWNlIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9jYXRjaF9wYXJlbnRoZXNpcyI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfZWxzZV9rZXl3b3JkIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9lbHNlX2xlZnRfYnJhY2UiOnRydWUsCgkic3BhY2VfYmVmb3JlX2Zvcl9sZWZ0X2JyYWNlIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9mb3JfcGFyZW50aGVzaXMiOnRydWUsCgkic3BhY2VfYmVmb3JlX2lmX2xlZnRfYnJhY2UiOnRydWUsCgkic3BhY2VfYmVmb3JlX2lmX3BhcmVudGhlc2lzIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9tZXRob2RfY2FsbF9wYXJlbnRoZXNpcyI6ZmFsc2UsCgkic3BhY2VfYmVmb3JlX21ldGhvZF9kZWNsYXJhdGlvbl9wYXJlbnRoZXNpcyI6ZmFsc2UsCgkic3BhY2VfYmVmb3JlX21ldGhvZF9sZWZ0X2JyYWNlIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9zd2l0Y2hfbGVmdF9icmFjZSI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfc3dpdGNoX3BhcmVudGhlc2lzIjp0cnVlLAoJInNwYWNlX2JlZm9yZV90cnlfbGVmdF9icmFjZSI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfdHlwZV9oaW50X2NvbG9uIjpmYWxzZSwKCSJzcGFjZV9iZWZvcmVfd2hpbGVfa2V5d29yZCI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfd2hpbGVfbGVmdF9icmFjZSI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfd2hpbGVfcGFyZW50aGVzaXMiOnRydWUsCgkic3BhY2VfYmV0d2Vlbl9jYWxsX2FyZ3VtZW50cyI6dHJ1ZSwKCSJzcGFjZV9iZXR3ZWVuX2VudW1fYXJndW1lbnRzIjp0cnVlLAoJInNwYWNlX2JldHdlZW5fZnVuY3Rpb25fYXJndW1lbnRzIjp0cnVlLAoJInNwYWNlX2JldHdlZW5fdHlwZV9jb25zdHJhaW50cyI6dHJ1ZSwKCSJzcGFjZV9iZXR3ZWVuX3R5cGVfcGFyYW1ldGVycyI6dHJ1ZSwKCSJzcGFjZV9iZXR3ZWVuX3Zhcl9kZWNsYXJhdGlvbnMiOnRydWUsCgkic3BhY2VfaW5fdGVybmFyeV9hZnRlcl9jb2xvbiI6ZmFsc2UsCgkic3BhY2VfaW5fdGVybmFyeV9hZnRlcl9xdWVzdGlvbiI6ZmFsc2UsCgkic3BhY2VfaW5fdGVybmFyeV9iZWZvcmVfY29sb24iOmZhbHNlLAoJInNwYWNlX2luX3Rlcm5hcnlfYmVmb3JlX3F1ZXN0aW9uIjpmYWxzZSwKCSJzcGFjZV93aXRoaW5fY2F0Y2hfcGFyZW50aGVzaXMiOmZhbHNlLAoJInNwYWNlX3dpdGhpbl9mb3JfcGFyZW50aGVzaXMiOmZhbHNlLAoJInNwYWNlX3dpdGhpbl9pZl9wYXJlbnRoZXNpcyI6ZmFsc2UsCgkic3BhY2Vfd2l0aGluX21ldGhvZF9jYWxsX3BhcmVudGhlc2lzIjpmYWxzZSwKCSJzcGFjZV93aXRoaW5fbWV0aG9kX2RlY2xhcmF0aW9uX3BhcmVudGhlc2lzIjpmYWxzZSwKCSJzcGFjZV93aXRoaW5fc3dpdGNoX3BhcmVudGhlc2lzIjpmYWxzZSwKCSJzcGFjZV93aXRoaW5fd2hpbGVfcGFyZW50aGVzaXMiOmZhbHNlCn0"},{ name : "config", data : "e30"},{ name : "source", data : "LyoKCUNvbW1lbnQKKi8KcGFja2FnZS8qIENvbW1lbnQgKi9wYWNrLnBhY2s7Ly8gQ29tbWVudExpbmUKCi8qCglFbXB0eSB0eXBlCiovCiNpZiBqcyBjbGFzcyBFbXB0eUNsYXNzCnsKfQojZW5kCgovKgoJQ2xhc3MKKi8KZXh0ZXJuICNpZiBqcyBwcml2YXRlICNlbmQgY2xhc3MgTXlDbGFzcyBleHRlbmRzIFN1cGVyQ2xhc3MgaW1wbGVtZW50cyBJbnRlcmZhY2UKewoJLyoKCQlDb21tZW50CgkqLwoJdmFyIHZhcmlhYmxlOkludCA9IDA7CgoJLyoKCQlDb21tZW50CgkqLwoJdmFyIHByb3BlcnR5KGdldCwgc2V0KTpJbnQgPSAwOwoKCXB1YmxpYyBmdW5jdGlvbiBkb1RoaW5ncygpCgl7CgkJdmFyIGZvbyA9IDEwOwoKCQl2YXIgYmFyOkZvbyAtPiBJbnQgLT4gVm9pZDsKCQkKCQkvLyB0aGluZ3MgYmVpbmcgZG9uZQoJCWZ1bmN0aW9uIGlubGluZUZ1bmMoKXt9CgoJCXZhciBhID0gLTEgKyAyIC8gMzsKCQlhICs9IDE7CgkJYSsrOwoKCQlpZiAoZmxhZzEgPT0gdHJ1ZSB8fCAoZmxhZzIgIT0gdHJ1ZSAmJiBmbGFnMyA8IDEpKSB7CgkJCWlubGluZUZ1bmMoKTsKCQl9IGVsc2UgaWYgKHRydWUpIHsKCQkJLy8gZm9vCgkJfSBlbHNlIHsKCQkJLy8gYmFyCgkJfQoKCQlmb3IgKGkgaW4gMC4uLjEwKSB7CgkJCWEgKz0gMTA7CgkJCXRyYWNlKCJIZWxsbyIpOwoJCX0KCgkJd2hpbGUgKGZhbHNlKSB7CgkJCXRyYWNlKCJIZWxsbyIpOwoJCX0KCgkJZG8gewoJCQl0cmFjZSgiQm9vIik7CgkJfSB3aGlsZSAoZmFsc2UpCgoJCXN3aXRjaCAoZm9vKSB7CgkJCWNhc2UgImJhciI6CgkJCWRlZmF1bHQ6CgkJfQoKCQl0cnkgewoJCQl0aGluZ3MoKTsKCQl9IGNhdGNoIChlOkR5bmFtaWMpIHsKCQkJb3RoZXJUaGluZ3MoKTsKCQl9Cgl9Cn0KCi8qCglFbnVtCiovCmV4dGVybiBlbnVtIE15RW51bQp7CglNeUVudW1WYWx1ZTsKfQ"}];
+haxe.Resource.content = [{ name : "config-default", data : "ewoJImJyYWNlX29uX25ld2xpbmUiOmZhbHNlLAoJImNvbmRlbnNlX211bHRpcGxlX2VtcHR5X2xpbmVzIjp0cnVlLAoJImNvbmRlbnNlX211bHRpcGxlX3NwYWNlcyI6dHJ1ZSwKCSJlbXB0eV9saW5lX2F0X2VuZF9vZl9maWxlIjp0cnVlLAoJInNwYWNlX2FmdGVyX3R5cGVfaGludF9jb2xvbiI6ZmFsc2UsCgkic3BhY2VfYXJvdW5kX2FkZGl0aXZlX29wZXJhdG9ycyI6dHJ1ZSwKCSJzcGFjZV9hcm91bmRfYXJyb3ciOnRydWUsCgkic3BhY2VfYXJvdW5kX2Fzc2lnbm1lbnRfb3BlcmF0b3JzIjp0cnVlLAoJInNwYWNlX2Fyb3VuZF9lcXVhbGl0eV9vcGVyYXRvcnMiOnRydWUsCgkic3BhY2VfYXJvdW5kX2xvZ2ljYWxfb3BlcmF0b3JzIjp0cnVlLAoJInNwYWNlX2Fyb3VuZF9tdWx0aXBsaWNhdGl2ZV9vcGVyYXRvcnMiOnRydWUsCgkic3BhY2VfYXJvdW5kX3JlbGF0aW9uYWxfb3BlcmF0b3JzIjp0cnVlLAoJInNwYWNlX2Fyb3VuZF91bmFyeV9vcGVyYXRvcnMiOmZhbHNlLAoJInNwYWNlX2JlZm9yZV9jYXRjaF9rZXl3b3JkIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9jYXRjaF9sZWZ0X2JyYWNlIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9jYXRjaF9wYXJlbnRoZXNpcyI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfZWxzZV9rZXl3b3JkIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9lbHNlX2xlZnRfYnJhY2UiOnRydWUsCgkic3BhY2VfYmVmb3JlX2Zvcl9sZWZ0X2JyYWNlIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9mb3JfcGFyZW50aGVzaXMiOnRydWUsCgkic3BhY2VfYmVmb3JlX2lmX2xlZnRfYnJhY2UiOnRydWUsCgkic3BhY2VfYmVmb3JlX2lmX3BhcmVudGhlc2lzIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9tZXRob2RfY2FsbF9wYXJlbnRoZXNpcyI6ZmFsc2UsCgkic3BhY2VfYmVmb3JlX21ldGhvZF9kZWNsYXJhdGlvbl9wYXJlbnRoZXNpcyI6ZmFsc2UsCgkic3BhY2VfYmVmb3JlX21ldGhvZF9sZWZ0X2JyYWNlIjp0cnVlLAoJInNwYWNlX2JlZm9yZV9zd2l0Y2hfbGVmdF9icmFjZSI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfc3dpdGNoX3BhcmVudGhlc2lzIjp0cnVlLAoJInNwYWNlX2JlZm9yZV90cnlfbGVmdF9icmFjZSI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfdHlwZV9oaW50X2NvbG9uIjpmYWxzZSwKCSJzcGFjZV9iZWZvcmVfd2hpbGVfa2V5d29yZCI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfd2hpbGVfbGVmdF9icmFjZSI6dHJ1ZSwKCSJzcGFjZV9iZWZvcmVfd2hpbGVfcGFyZW50aGVzaXMiOnRydWUsCgkic3BhY2VfYmV0d2Vlbl9jYWxsX2FyZ3VtZW50cyI6dHJ1ZSwKCSJzcGFjZV9iZXR3ZWVuX2VudW1fYXJndW1lbnRzIjp0cnVlLAoJInNwYWNlX2JldHdlZW5fZnVuY3Rpb25fYXJndW1lbnRzIjp0cnVlLAoJInNwYWNlX2JldHdlZW5fdHlwZV9jb25zdHJhaW50cyI6dHJ1ZSwKCSJzcGFjZV9iZXR3ZWVuX3R5cGVfcGFyYW1ldGVycyI6dHJ1ZSwKCSJzcGFjZV9iZXR3ZWVuX3Zhcl9kZWNsYXJhdGlvbnMiOnRydWUsCgkic3BhY2VfaW5fdGVybmFyeV9hZnRlcl9jb2xvbiI6ZmFsc2UsCgkic3BhY2VfaW5fdGVybmFyeV9hZnRlcl9xdWVzdGlvbiI6ZmFsc2UsCgkic3BhY2VfaW5fdGVybmFyeV9iZWZvcmVfY29sb24iOmZhbHNlLAoJInNwYWNlX2luX3Rlcm5hcnlfYmVmb3JlX3F1ZXN0aW9uIjpmYWxzZSwKCSJzcGFjZV93aXRoaW5fY2F0Y2hfcGFyZW50aGVzaXMiOmZhbHNlLAoJInNwYWNlX3dpdGhpbl9mb3JfcGFyZW50aGVzaXMiOmZhbHNlLAoJInNwYWNlX3dpdGhpbl9pZl9wYXJlbnRoZXNpcyI6ZmFsc2UsCgkic3BhY2Vfd2l0aGluX21ldGhvZF9jYWxsX3BhcmVudGhlc2lzIjpmYWxzZSwKCSJzcGFjZV93aXRoaW5fbWV0aG9kX2RlY2xhcmF0aW9uX3BhcmVudGhlc2lzIjpmYWxzZSwKCSJzcGFjZV93aXRoaW5fc3dpdGNoX3BhcmVudGhlc2lzIjpmYWxzZSwKCSJzcGFjZV93aXRoaW5fd2hpbGVfcGFyZW50aGVzaXMiOmZhbHNlCn0"},{ name : "config", data : "e30"},{ name : "source", data : "LyoKCUNvbW1lbnQKKi8KcGFja2FnZS8qIENvbW1lbnQgKi9wYWNrLnBhY2s7Ly8gQ29tbWVudExpbmUKCi8qCglFbXB0eSB0eXBlCiovCiNpZiBqcyBjbGFzcyBFbXB0eUNsYXNzCnsKfQojZW5kCgovKgoJQ2xhc3MKKi8KZXh0ZXJuICNpZiBqcyBwcml2YXRlICNlbmQgY2xhc3MgTXlDbGFzcyBleHRlbmRzIFN1cGVyQ2xhc3MgaW1wbGVtZW50cyBJbnRlcmZhY2UKewoJLyoKCQlDb21tZW50CgkqLwoJdmFyIHZhcmlhYmxlOkludCA9IDA7CgoJLyoKCQlDb21tZW50CgkqLwoJdmFyIHByb3BlcnR5KGdldCwgc2V0KTpJbnQgPSAwOwoKCXB1YmxpYyBmdW5jdGlvbiBkb1RoaW5ncygpCgl7CgkJdmFyIGZvbyA9IDEwOwoKCQl2YXIgYmFyOkZvbyAtPiBJbnQgLT4gVm9pZDsKCQkKCQkvLyB0aGluZ3MgYmVpbmcgZG9uZQoJCWZ1bmN0aW9uIGlubGluZUZ1bmMoKXt9CgoJCXZhciBhID0gLTEgKyAyIC8gMzsKCQlhICs9IDE7CgkJYSsrOwoKCQlpZiAoZmxhZzEgPT0gdHJ1ZSB8fCAoZmxhZzIgIT0gdHJ1ZSAmJiBmbGFnMyA8IDEpKSB7CgkJCWlubGluZUZ1bmMoKTsKCQl9IGVsc2UgaWYgKHRydWUpIHsKCQkJLy8gZm9vCgkJfSBlbHNlIHsKCQkJLy8gYmFyCgkJfQoKCQlmb3IgKGkgaW4gMC4uLjEwKSB7CgkJCWEgKz0gMTA7CgkJCXRyYWNlKCJIZWxsbyIpOwoJCX0KCgkJd2hpbGUgKGZhbHNlKSB7CgkJCXRyYWNlKCJIZWxsbyIpOwoJCX0KCgkJZG8gewoJCQl0cmFjZSgiQm9vIik7CgkJfSB3aGlsZSAoZmFsc2UpCgoJCXN3aXRjaCAoZm9vKSB7CgkJCWNhc2UgImJhciI6CgkJCWRlZmF1bHQ6CgkJfQoKCQl0cnkgewoJCQl0aGluZ3MoKTsKCQl9IGNhdGNoIChlOkR5bmFtaWMpIHsKCQkJb3RoZXJUaGluZ3MoKTsKCQl9Cgl9Cn0KCi8qCglFbnVtCiovCmV4dGVybiBlbnVtIE15RW51bQp7CglNeUVudW1WYWx1ZTsKfQ"}];
 byte._LittleEndianWriter.LittleEndianWriter_Impl_.LN2 = Math.log(2);
 haxe.crypto.Base64.CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 haxe.crypto.Base64.BYTES = haxe.io.Bytes.ofString(haxe.crypto.Base64.CHARS);

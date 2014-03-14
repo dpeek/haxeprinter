@@ -1,4 +1,5 @@
 {
+	"brace_on_newline":false,
 	"condense_multiple_empty_lines":true,
 	"condense_multiple_spaces":true,
 	"empty_line_at_end_of_file":true,
