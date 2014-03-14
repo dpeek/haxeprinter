@@ -56,6 +56,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				if (lastChar == ' ') '';
 				else ' ';
 			case SNewline: '\n$tabs';
+			case SNewlineIndented: '\n$tabs\t';
 			case SIgnore: space;
 			case SNone: newline ? space : '';
 		}
@@ -411,8 +412,11 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	function parseHeritance() {
 		while(true) {
 			switch stream {
-				case [{tok:Kwd(KwdExtends | KwdImplements)}]:
-					addLast(SDecl, SSpace, SSpace);
+				case [{tok:Kwd(KwdExtends)}]:
+					addLast(SDecl, cfg.extends_on_newline ? SNewlineIndented : SSpace, SSpace);
+					parseComplexType();
+				case [{tok:Kwd(KwdImplements)}]:
+					addLast(SDecl, cfg.implements_on_newline ? SNewlineIndented : SSpace, SSpace);
 					parseComplexType();
 				case _: break;
 			}
@@ -1013,6 +1017,7 @@ enum Spacing
 {
 	SSpace;
 	SNewline;
+	SNewlineIndented;
 	SIgnore;
 	SNone;
 }

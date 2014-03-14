@@ -166,4 +166,10 @@ typedef Config =
 
 	@:default(false)
 	var brace_on_newline:Bool;
+
+	@:default(false)
+	var extends_on_newline:Bool;
+
+	@:default(false)
+	var implements_on_newline:Bool;
 }
