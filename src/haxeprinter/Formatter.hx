@@ -22,6 +22,11 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	function add(token:Token, ?style:Style, ?before:Spacing, ?after:Spacing)
 	{
 		var space = token.space;
+		if (cfg.condense_multiple_spaces) space = ~/ +/.replace(space, ' ');
+		if (cfg.condense_multiple_empty_lines) space = ~/\n{3,}/.replace(space, '\n\n');
+		space = ~/(^|\n)[\t ]{2,}/.replace(space, '$$1$tabs');
+		var newline = space.indexOf('\n') > -1;
+
 		if (before == null)
 		{
 			before = switch (token.tok)
@@ -37,25 +42,20 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 			switch (token.tok)
 			{
 				case Kwd(_) | Const(CIdent(_)) | Kwd(KwdFalse) | Kwd(KwdTrue) | Kwd(KwdNull):
-					if (~/\w/.match(lastChar)) before = SSpace;
+					if (~/\w/.match(lastChar)) before = SIgnore;
 				default:
 			}
 		}
 		if (after == null) after = SNone;
 
-		if (cfg.condense_multiple_spaces) space = ~/ +/.replace(space, ' ');
-		if (cfg.condense_multiple_empty_lines) space = ~/\n{3,}/.replace(space, '\n\n');
-
-		space = ~/(^|\n)[\t ]{2,}/.replace(space, '$$1$tabs');
-
-		var newline = space.indexOf('\n') > -1;
 		space = switch (before)
 		{
 			case SSpace:
-				if (newline) space;
-				else if (lastChar == ' ') '';
+				// if (newline) space;
+				// else 
+				if (lastChar == ' ') '';
 				else ' ';
-			case SNewline: '\n';
+			case SNewline: '\n$tabs';
 			case SIgnore: space;
 			case SNone: newline ? space : '';
 		}
@@ -242,9 +242,9 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		psep(Comma, parseFunctionArgument, null, spaceIf(cfg.space_between_function_arguments));
 		expect(PClose, spaceIf(cfg.space_within_method_declaration_parenthesis));
 		popt(parseTypeHint);
-		popt(parseExpr.bind(spaceIf(cfg.space_before_method_left_brace), null));
+		popt(parseExpr.bind(spaceOrNewline(cfg.brace_on_newline, cfg.space_before_method_left_brace), null));
 	}
-	
+
 	function parseFunctionArgument() {
 		switch stream {
 			case [{tok:Question}]:
@@ -263,7 +263,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 		while(true) {
 			switch stream {
 				case [{tok:Kwd(k = KwdStatic | KwdPublic | KwdPrivate | KwdExtern | KwdInline | KwdMacro | KwdDynamic | KwdOverride)}]:
-					addLast(SKwd, SSpace);
+					addLast(SKwd);
 				case _:
 					return;
 			}
@@ -342,7 +342,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				parseAnyIdent(SType, SSpace);
 				popt(parseTypeParameters);
 				parseHeritance();
-				expect(BrOpen);
+				expect(BrOpen, spaceOrNewline(cfg.brace_on_newline, true));
 				moreTabs();
 				parseClassFields(false);
 				
@@ -351,7 +351,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				parseAnyIdent(SType, SSpace);
 				popt(parseTypeParameters);
 
-				expect(BrOpen);
+				expect(BrOpen, spaceOrNewline(cfg.brace_on_newline, true));
 				moreTabs();
 				parseEnumFields(false);
 
@@ -369,7 +369,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				popt(parseAbstractThis);
 				popt(parseAbstractRelations);
 
-				expect(BrOpen);
+				expect(BrOpen, spaceOrNewline(cfg.brace_on_newline, true));
 				moreTabs();
 				parseEnumFields(false);
 			case [{tok:Eof}]:
@@ -608,13 +608,13 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	function parseCatch() {
 		switch stream {
 			case [{tok:Kwd(KwdCatch)}]:
-				addLast(SKwd, spaceIf(cfg.space_before_catch_keyword));
+				addLast(SKwd, spaceOrNewline(cfg.brace_on_newline, cfg.space_before_catch_keyword));
 				expect(POpen, null, spaceIf(cfg.space_before_catch_parenthesis), spaceIf(cfg.space_within_catch_parenthesis));
 				parseAnyIdent();
 				expect(DblDot);
 				parseComplexType();
 				expect(PClose, spaceIf(cfg.space_within_catch_parenthesis));
-				parseExpr(spaceIf(cfg.space_before_catch_left_brace));
+				parseExpr(spaceOrNewline(cfg.brace_on_newline, cfg.space_before_catch_left_brace));
 		}
 	}
 	
@@ -672,8 +672,8 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 						expect(BrClose);
 				}
 			case [{tok:BrClose}]:
-				addLast();
 				lessTabs();
+				addLast();
 			case _:
 				plist(parseBlockElement);
 				lessTabs();
@@ -772,12 +772,12 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				expect(POpen, null, spaceIf(cfg.space_before_if_parenthesis), spaceIf(cfg.space_within_if_parenthesis));
 				parseExpr();
 				expect(PClose, spaceIf(cfg.space_within_if_parenthesis));
-				parseExpr(spaceIf(cfg.space_before_if_left_brace));
+				parseExpr(spaceOrNewline(cfg.brace_on_newline, cfg.space_before_if_left_brace));
 				semicolon();
 				switch stream {
 					case [{tok:Kwd(KwdElse)}]:
-						addLast(SKwd, spaceIf(cfg.space_before_else_keyword));
-						parseExpr(spaceIf(cfg.space_before_else_left_brace));
+						addLast(SKwd, spaceOrNewline(cfg.brace_on_newline, cfg.space_before_else_keyword));
+						parseExpr(spaceOrNewline(cfg.brace_on_newline, cfg.space_before_else_left_brace));
 					case _:
 				}
 			case [{tok:Kwd(KwdNew)}]:
@@ -791,17 +791,17 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				expect(POpen, null, spaceIf(cfg.space_before_for_parenthesis), spaceIf(cfg.space_within_for_parenthesis));
 				parseExpr();
 				expect(PClose, spaceIf(cfg.space_within_for_parenthesis));
-				parseExpr(spaceIf(cfg.space_before_for_left_brace));
+				parseExpr(spaceOrNewline(cfg.brace_on_newline, cfg.space_before_for_left_brace));
 			case [{tok:Kwd(KwdWhile)}]:
-				addLast(SKwd, spaceIf(cfg.space_before_while_keyword));
+				addLast(SKwd);
 				expect(POpen, null, spaceIf(cfg.space_before_while_parenthesis), spaceIf(cfg.space_within_while_parenthesis));
 				parseExpr();
 				expect(PClose, spaceIf(cfg.space_within_while_parenthesis));
-				parseExpr(spaceIf(cfg.space_before_while_left_brace));
+				parseExpr(spaceOrNewline(cfg.brace_on_newline, cfg.space_before_while_left_brace));
 			case [{tok:Kwd(KwdDo)}]:
 				addLast(SKwd);
-				parseExpr(spaceIf(cfg.space_before_while_left_brace));
-				expect(Kwd(KwdWhile), SKwd, spaceIf(cfg.space_before_while_keyword));
+				parseExpr(spaceOrNewline(cfg.brace_on_newline, cfg.space_before_while_left_brace));
+				expect(Kwd(KwdWhile), SKwd, spaceOrNewline(cfg.brace_on_newline, cfg.space_before_while_keyword));
 				expect(POpen, null, spaceIf(cfg.space_before_while_parenthesis), spaceIf(cfg.space_within_while_parenthesis));
 				parseExpr();
 				expect(PClose, spaceIf(cfg.space_within_while_parenthesis));
@@ -813,7 +813,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 				parseExpr();
 			case [{tok:Kwd(KwdTry)}]:
 				addLast(SKwd);
-				parseExpr(spaceIf(cfg.space_before_try_left_brace));
+				parseExpr(spaceOrNewline(cfg.brace_on_newline, cfg.space_before_try_left_brace));
 				plist(parseCatch);
 			case [{tok:Kwd(KwdSwitch)}]:
 				addLast(SKwd, null, spaceIf(cfg.space_before_switch_parenthesis));
@@ -825,12 +825,12 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 					case _:
 						parseExpr();
 				}
-				expect(BrOpen, spaceIf(cfg.space_before_switch_left_brace));
+				expect(BrOpen, spaceOrNewline(cfg.brace_on_newline, cfg.space_before_switch_left_brace));
 				moreTabs();
 				while(true) {
 					switch stream {
 						case [{tok:Kwd(KwdCase)}]:
-							addLast(SKwd);
+							addLast(SKwd, null, SSpace);
 							psep(Comma, parseExpr.bind(null, null));
 							switch stream  {
 								case [{tok:DblDot}]:
@@ -868,13 +868,13 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 							}
 							lessTabs();
 						case [{tok:BrClose}]:
+							lessTabs();
 							addLast();
 							break;
 						case _:
 							unexpected();
 					}
 				}
-				lessTabs();
 		}
 		parseExprNext();
 	}
@@ -955,6 +955,11 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	function spaceIf(flag:Bool)
 	{
 		return flag ? SSpace : SNone;
+	}
+
+	function spaceOrNewline(newline:Bool, space:Bool)
+	{
+		return newline ? SNewline : spaceIf(space);
 	}
 
 	function semicolon() {

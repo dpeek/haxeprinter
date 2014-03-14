@@ -161,4 +161,9 @@ typedef Config =
 
 	@:default(true)
 	var space_between_var_declarations:Bool;
+
+	// cuddle braces
+
+	@:default(false)
+	var brace_on_newline:Bool;
 }
