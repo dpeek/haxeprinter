@@ -7,7 +7,7 @@ import hxparse.Unexpected;
 
 class Demo
 {
-	static var cfg;
+	static var cfg:Config;
 	
 	static function main()
 	{
@@ -26,22 +26,36 @@ class Demo
 		}
 		
 		var html = '<form>';
-		for (field in Reflect.fields(cfg))
-		{
-			var label = field.split('_').join(' ');
-			var value = Reflect.field(cfg, field);
-			if (value == true || value == false)
+		function loop(obj:{}, path:String) {
+			for (field in Reflect.fields(obj))
 			{
-				var checked = value ? ' checked' : '';
-				html += '<fieldset><input type="checkbox" name="$field"$checked/></input<label for="$field">$label</label></fieldset>';
+				var label = field.split('_').join(' ');
+				var value:Dynamic = Reflect.field(obj, field);
+				var name = path == "" ? field : path + "." + field;
+				if (value == true || value == false)
+				{
+					var checked = value ? ' checked' : '';
+					html += '<fieldset><input type="checkbox" name="$name"$checked/></input<label for="$field">$label</label></fieldset>';
+				} else {
+					// TODO: I guess not all non-bool fields are sub-categories
+					html += "<ul>" + label;
+					loop(value, name);
+					html += "</ul>";
+				}
 			}
 		}
+		loop(cfg, "");
 		config.innerHTML = html + '</form>';
 		config.onclick = function(e) {
 			if (e.target.tagName != 'INPUT') return;
-			var name = e.target.getAttribute('name');
+			var name:String = e.target.getAttribute('name');
 			var value = e.target.checked;
-			Reflect.setField(cfg, name, value);
+			var split = name.split(".");
+			var obj = cfg;
+			while(split.length > 1) {
+				obj = Reflect.field(obj, split.shift());
+			}
+			Reflect.setField(obj, split.shift(), value);
 			update();
 		}
 
