@@ -168,10 +168,29 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 						throw "String expected";
 				}
 				peek(0);
-			case Sharp(s = "if" | "elseif"):
+			case Sharp(s = "if"):
 				addNext(SMacro);
 				skipMacroCond();
 				peek(0);
+			case Sharp(s = "elseif" | "else"):
+				addNext(SMacro);
+				var count = 1;
+				while(true) {
+					var tok = super.peek(0);
+					junk();
+					addLast();
+					switch(tok.tok) {
+						case Sharp("end"):
+							--count;
+							if (count == 0) {
+								return peek(0);
+							}
+						case Sharp("if"):
+							++count;
+						case _:
+					}
+				}
+				throw 'Unclosed macro';
 			case Sharp(_):
 				addNext(SMacro);
 				peek(0);
