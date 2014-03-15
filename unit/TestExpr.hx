@@ -327,6 +327,12 @@ class TestExpr extends TestCommon {
 			["function a<B:C>() {}", "function a<B:(C,D)>() {}"]
 		);
 	}
+	
+	function testPreprocessor() {
+		test(
+			["function #if true foo #elseif false bar #else baz #end() {}"]
+		);
+	}
 
 	// TODO: space_between_var_declarations (requires blocks)
 }
