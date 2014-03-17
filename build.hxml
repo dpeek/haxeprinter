@@ -1,39 +1,48 @@
--cp src
---macro haxeprinter.Macro.generateConfigTemplate()
-
---next
-
--cmd cp res/* bin
-
---next
-
--D keep-whitespace
--lib hxparse
--lib haxeparser
--resource res/config.json@config
--resource res/config-default.json@config-default
--cp src
-
---each
-
-
---next
-
--main haxeprinter.Main
--neko bin/format.n
-
---next
-
--main haxeprinter.Demo
--js bin/index.js
--resource test/Test.hx@source
-
---next
-
--cmd neko bin/format.n test
+# -cp src
+# --macro haxeprinter.Macro.generateConfigTemplate()
 
 # --next
 
--cp unit
--main Test
+# -cmd cp res/* bin
+
+# --next
+
+# -D keep-whitespace
+# -lib hxparse
+# -lib haxeparser
+# -resource res/config.json@config
+# -resource res/config-default.json@config-default
+# -cp src
+
+# --each
+
+
+# --next
+
+# -main haxeprinter.Main
+# -neko bin/format.n
+
+# --next
+
+# -main haxeprinter.Demo
+# -js bin/index.js
+# -resource test/Test.hx@source
+
+# --next
+
+# -cmd neko bin/format.n test
+
+# # --next
+
+# -cp unit
+# -main Test
+# --interp
+
+-cp src
+-main haxeprinter.Printer
+-D keep-whitespace
 --interp
+-lib haxeparser
+-lib hxparse
+-resource res/config.json@config
+-resource res/config-default.json@config-default
