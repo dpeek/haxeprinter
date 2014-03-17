@@ -38,6 +38,8 @@ enum State
 	SCast;
 	SVarDecl;
 	SBlockOrStructure;
+	SBlock;
+	SAfterBlockElement;
 	SArrayDecl;
 	SParen;
 	SIf;
@@ -95,6 +97,12 @@ class Printer
 	// var a:Int;
 	var a:Int -> (Int -> Float) -> Void;
 	// var a:b.C;
+	
+	static function main() {
+		trace();
+		test(1);
+		test(1, 2);
+	}
 }";
 		var input = byte.ByteData.ofString(s);
 		var lexer = new HaxeLexer(input, "test");
@@ -283,13 +291,13 @@ class Printer
 	function process(tk:PrintToken)
 	{
 		var tok = tk.tok;
-
+		trace(states.first(), tok);
 		switch (states.first())
 		{
 			case STopLevel: switch (tok)
 			{
 				case At: enter(SMeta(0));
-				case Kwd(KwdStatic | KwdPublic | KwdPrivate | KwdExtern | KwdInline | 
+				case Kwd(KwdStatic | KwdPublic | KwdPrivate | KwdExtern | KwdInline |
 					KwdMacro | KwdDynamic | KwdOverride): enter(SModifier);
 				case Kwd(KwdPackage): enter(SPackage);
 				case Kwd(KwdImport): enter(SImport);
@@ -317,7 +325,7 @@ class Printer
 			case SClassBody: switch (tok)
 			{
 				case At: enter(SMeta(0));
-				case Kwd(KwdStatic | KwdPublic | KwdPrivate | KwdExtern | KwdInline | 
+				case Kwd(KwdStatic | KwdPublic | KwdPrivate | KwdExtern | KwdInline |
 					KwdMacro | KwdDynamic | KwdOverride): enter(SModifier);
 				case Kwd(KwdVar): enter(SClassProp);
 				case Kwd(KwdFunction): enter(SClassFunction);
@@ -335,7 +343,7 @@ class Printer
 			}
 			case SClassPropAccess(i): switch (tok)
 			{
-				case Const(CIdent(_)) | Kwd(KwdNull | KwdDynamic | 
+				case Const(CIdent(_)) | Kwd(KwdNull | KwdDynamic |
 					KwdDefault) if (i == 0 || i == 2): exitAndEnter(SClassPropAccess(i+1));
 				case Comma if (i == 1): exitAndEnter(SClassPropAccess(i+1));
 				case PClose if (i == 3): exit();
@@ -345,7 +353,7 @@ class Printer
 			{
 				case Const(CIdent(_)) | Kwd(KwdNew):
 				case POpen: enter(SClassFunctionArgs);
-				case BrOpen: enter(SExpr);
+				case BrOpen: exitAndEnter(SBlock);
 				case _: unexpected(tk);
 			}
 			case SClassFunctionArgs: switch (tok)
@@ -473,9 +481,24 @@ class Printer
 			}
 			case SModifier: switch (tok)
 			{
-				case Kwd(KwdStatic | KwdPublic | KwdPrivate | KwdExtern | KwdInline | 
+				case Kwd(KwdStatic | KwdPublic | KwdPrivate | KwdExtern | KwdInline |
 					KwdMacro | KwdDynamic | KwdOverride):
 				case _: exitAndProcess(tk);
+			}
+			case SBlock:
+				exitAndEnter(SAfterBlockElement);
+				enterAndProcess(SExpr, tk);
+			case SCall: switch (tok)
+			{
+				case PClose: exit();
+				case Comma:
+				case _: enterAndProcess(SExpr, tk);
+			}
+			case SAfterBlockElement: switch(tok)
+			{
+				case Semicolon: exitAndEnter(SBlock);
+				case BrClose: exit();
+				case _: unexpected(tk);
 			}
 			case state: throw 'not yet implmented: $state';
 		}
