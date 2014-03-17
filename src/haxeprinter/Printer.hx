@@ -14,18 +14,20 @@ enum State
 	SModifier;
 	SMeta(i:Int);
 	SPackage;
-	SPathDot;
+	STypePath;
 	SImport;
 	SUsing;
-	SClass;
+	SClassDecl;
 	SClassProp;
 	SClassPropAccess(i:Int);
 	SClassFunction;
 	SClassFunctionArgs;
 	STypeDef;
 	SAbstract;
-	SComplexType(i:Int);
-	STypeParams;
+	SComplexType;
+	SComplexTypeNext;
+	SComplexTypeParent;
+	STypePathParams;
 	SClassBody;
 	STypeField(i:Int);
 	SExpr;
@@ -40,6 +42,10 @@ enum State
 	SParen;
 	SIf;
 	SNew;
+	SFor;
+	SWhile;
+	SDo;
+	SCall;
 }
 
 typedef PrintToken = { before:String, after:String, style:Style, tok:TokenDef, pos:Position }
@@ -84,15 +90,11 @@ class Printer
 	{
 		// var s = "package #if false #if (foo || bar) test.baz. #else bar. #end bing #if boo .foo; #else .s; #end #else ; #end";
 		var s =
-"package foo;
-macro class Foo extends Bar implements Baz
+"class A
 {
-	@:isVar static var foo(get, set):Array<{foo:Int,bar:Float}> = 100;
-
-	function new()
-	{
-		trace('hello');
-	}
+	// var a:Int;
+	var a:Int -> (Int -> Float) -> Void;
+	// var a:b.C;
 }";
 		var input = byte.ByteData.ofString(s);
 		var lexer = new HaxeLexer(input, "test");
@@ -156,17 +158,20 @@ macro class Foo extends Bar implements Baz
 
 	function enter(s:State)
 	{
-		log('enter $s');
 		states.add(s);
+		
+		var copy = states.array();
+		copy.reverse();
+		log(copy.join(' '));
 	}
 
-	function exit(?levels:Int=1)
+	function exit()
 	{
-		for (i in 0...levels)
-		{
-			var s = states.pop();
-			log('exit $s');
-		}
+		states.pop();
+
+		var copy = states.array();
+		copy.reverse();
+		log(copy.join(' ')+' <');
 	}
 
 	function exitAndProcess(tk:PrintToken)
@@ -179,6 +184,12 @@ macro class Foo extends Bar implements Baz
 	{
 		enter(s);
 		process(tk);
+	}
+
+	function exitEnterAndProcess(s:State, tk:PrintToken)
+	{
+		exit();
+		enterAndProcess(s, tk);
 	}
 
 	function exitAndEnter(s:State)
@@ -213,6 +224,8 @@ macro class Foo extends Bar implements Baz
 		var tk = rawToken();
 		return switch (tk.tok)
 		{
+			case CommentLine(_) | Comment(_):
+				token();
 			case Sharp('if'):
 				save();
 				skipMacroCond();
@@ -281,7 +294,7 @@ macro class Foo extends Bar implements Baz
 				case Kwd(KwdPackage): enter(SPackage);
 				case Kwd(KwdImport): enter(SImport);
 				case Kwd(KwdUsing): enter(SUsing);
-				case Kwd(KwdClass | KwdInterface): enter(SClass);
+				case Kwd(KwdClass | KwdInterface): enter(SClassDecl);
 				case Kwd(KwdTypedef): enter(STypeDef);
 				case Kwd(KwdAbstract): enter(SAbstract);
 				case Eof: return;
@@ -289,16 +302,16 @@ macro class Foo extends Bar implements Baz
 			}
 			case SPackage: switch (tok)
 			{
-				case Const(CIdent(_)) | Kwd(KwdMacro | KwdNew): enter(SPathDot);
+				case Const(CIdent(_)) | Kwd(KwdMacro | KwdNew): enter(STypePath);
 				case Semicolon: exit();
 				case _: unexpected(tk);
 			}
-			case SClass: switch (tok)
+			case SClassDecl: switch (tok)
 			{
 				case Const(CIdent(_)):
-				case Binop(OpLt): enter(STypeParams);
-				case Kwd(KwdExtends | KwdImplements): enter(SComplexType(0));
-				case BrOpen: enter(SClassBody);
+				case Binop(OpLt): enter(STypePathParams);
+				case Kwd(KwdExtends | KwdImplements): enter(SComplexType);
+				case BrOpen: exitAndEnter(SClassBody);
 				case _: unexpected(tk);
 			}
 			case SClassBody: switch (tok)
@@ -308,14 +321,14 @@ macro class Foo extends Bar implements Baz
 					KwdMacro | KwdDynamic | KwdOverride): enter(SModifier);
 				case Kwd(KwdVar): enter(SClassProp);
 				case Kwd(KwdFunction): enter(SClassFunction);
-				case BrClose: exit(2);
-				case _: unexpected(tk);
+				case BrClose: exit();
+				case _: exitAndProcess(tk);
 			}
 			case SClassProp: switch (tok)
 			{
 				case Const(CIdent(_)):
 				case POpen: enter(SClassPropAccess(0));
-				case DblDot: enter(SComplexType(0));
+				case DblDot: enter(SComplexType);
 				case Binop(OpAssign): enter(SExpr);
 				case Semicolon: exit();
 				case _: unexpected(tk);
@@ -342,7 +355,7 @@ macro class Foo extends Bar implements Baz
 			}
 			case STypeDef: switch (tok)
 			{
-				case Binop(OpGt): enter(SComplexType(0));
+				case Binop(OpGt): enter(SComplexType);
 				case Comma:
 				case Question | Const(CIdent(_)): enterAndProcess(STypeField(0), tk);
 				case BrClose: exit();
@@ -385,11 +398,17 @@ macro class Foo extends Bar implements Baz
 					enter(SIf);
 				case Kwd(KwdNew):
 					enter(SNew);
+				case Kwd(KwdFor):
+					enter(SFor);
+				case Kwd(KwdWhile):
+					enter(SWhile);
+				case Kwd(KwdDo):
+					enter(SDo);
 				case _:
 					exitAndProcess(tk);
 			}
 			enter(SExprNext);
-			case SExprNext: switch (tk)
+			case SExprNext: switch (tok)
 			{
 				case POpen:
 					enter(SCall);
@@ -413,30 +432,41 @@ macro class Foo extends Bar implements Baz
 			{
 				case Question if (i == 0): exitAndEnter(STypeField(1));
 				case Const(CIdent(_)) if (i == 0 || i == 1): exitAndEnter(STypeField(2));
-				case DblDot if (i == 2): enter(SComplexType(0));
+				case DblDot if (i == 2): enter(SComplexType);
 				case _: exitAndProcess(tk);
 			}
-			case SComplexType(i): switch (tok)
+			case SComplexType: switch (tok)
 			{
-				case Const(CIdent(_)) if (i == 0):
-					exitAndEnter(SComplexType(1));
-					enter(SPathDot);
-				case BrOpen if (i == 0):
-					exitAndEnter(SComplexType(1));
+				case Const(CIdent(_)):
+					exitAndEnter(SComplexTypeNext);
+					enter(STypePath);
+				case BrOpen:
+					exitAndEnter(SComplexTypeNext);
 					enter(STypeDef);
-				case POpen: enter(SComplexType(0));
+				case POpen:
+					exitAndEnter(SComplexTypeParent);
+					enter(SComplexType);
+				case _: exitEnterAndProcess(SComplexTypeNext, tk);
+			}
+			case SComplexTypeNext: switch (tok)
+			{
+				case Arrow: enter(SComplexType);
+				case _: exitAndProcess(tk);
+			}
+			case SComplexTypeParent: switch (tok)
+			{
 				case PClose: exit();
 				case _: exitAndProcess(tk);
 			}
-			case SPathDot: switch (tok)
+			case STypePath: switch (tok)
 			{
-				case Dot: exit();
-				case Binop(OpLt): enter(STypeParams);
+				case Const(CIdent(_)) | Dot:
+				case Binop(OpLt): enter(STypePathParams);
 				case _: exitAndProcess(tk);
 			}
-			case STypeParams: switch (tok)
+			case STypePathParams: switch (tok)
 			{
-				case Const(CIdent(_)) | BrOpen: enterAndProcess(SComplexType(0), tk);
+				case Const(CIdent(_)) | BrOpen: enterAndProcess(SComplexType, tk);
 				case Comma:
 				case Binop(OpGt): exit();
 				case _: unexpected(tk);
