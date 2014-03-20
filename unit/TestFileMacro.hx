@@ -81,8 +81,10 @@ class TestFileMacro {
 					for (i in 0...subjects.length) {
 						ret.push(macro exprEq($e{subjects[i]}, $e{el[i]}));
 					}
-				case macro $i{lhs} = $rhs:
-					ret.push(macro currentConfig.$lhs = $rhs);
+				case macro $lhs = $rhs:
+					var sLhs = lhs.toString().split(".");
+					sLhs.unshift("currentConfig");
+					ret.push(macro $p{sLhs} = $rhs);
 				case _:
 					ret.push(macro exprEq($e{subjects[0]}, $e));
 			}
