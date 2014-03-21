@@ -1,20 +1,20 @@
-# -cp src
-# --macro haxeprinter.Macro.generateConfigTemplate()
+-cp src
+--macro haxeprinter.Macro.generateConfigTemplate()
 
-# --next
+--next
 
-# -cmd cp res/* bin
+-cmd cp res/* bin
 
-# --next
+--next
 
-# -D keep-whitespace
-# -lib hxparse
-# -lib haxeparser
-# -resource res/config.json@config
-# -resource res/config-default.json@config-default
-# -cp src
+-D keep-whitespace
+-lib hxparse
+-lib haxeparser
+-resource res/config.json@config
+-resource res/config-default.json@config-default
+-cp src
 
-# --each
+--each
 
 
 # --next
@@ -32,17 +32,11 @@
 
 # -cmd neko bin/format.n test
 
-# # --next
+# --next
 
 # -cp unit
 # -main Test
 # --interp
 
--cp src
 -main haxeprinter.Printer
--D keep-whitespace
 --interp
--lib haxeparser
--lib hxparse
--resource res/config.json@config
--resource res/config-default.json@config-default

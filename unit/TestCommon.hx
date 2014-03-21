@@ -17,13 +17,13 @@ class TestCommon extends haxe.unit.TestCase {
 	}
 	
 	function parseExpr(inputCode:String, ?p:haxe.PosInfos) {
-		var parser = new Formatter(byte.ByteData.ofString(inputCode), currentConfig, '${p.methodName}:${p.lineNumber}');
+		var parser = new haxeprinter.Printer(byte.ByteData.ofString(inputCode), currentConfig, '${p.methodName}:${p.lineNumber}');
 		parser.parseExpr();
 		return parser.getContent();
 	}
 	
 	function parseFile(inputCode:String, ?p:haxe.PosInfos) {
-		var parser = new Formatter(byte.ByteData.ofString(inputCode), currentConfig, '${p.methodName}:${p.lineNumber}');
+		var parser = new haxeprinter.Printer(byte.ByteData.ofString(inputCode), currentConfig, '${p.methodName}:${p.lineNumber}');
 		parser.parseFile();
 		return parser.getContent();
 	}
