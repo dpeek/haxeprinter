@@ -26,10 +26,39 @@ enum State
 	STypeParams;
 	SProperty;
 	SMethod;
-	SIdent;
 	SExpr;
-	SAssign;
-	SConst;
+	SExprNext;
+	SMacroExpr;
+	SUntyped;
+	SComplexType;
+	SDollar;
+	SFunction;
+	SThrow;
+	SReturn;
+	SCast;
+	SVarDecl;
+	SNegative;
+	SBlockOrStructure;
+	SBlock;
+	SStructure;
+	SArray;
+	SGroup;
+	SIf;
+	SElse;
+	SFor;
+	SWhile;
+	SDo;
+	SUnop;
+	SNew;
+	SInterval;
+	STry;
+	SCatch;
+	SSwitch;
+	SCase;
+	SDefault;
+	SBlockElement;
+	SStructureElement;
+	SCall;
 }
 
 enum Pattern
@@ -38,6 +67,7 @@ enum Pattern
 	PState(state:State);
 	POr(pats:Array<Pattern>);
 	PList(pat:Pattern);
+	PSep(pat:Pattern, sep:Pattern);
 	PSeq(pats:Array<Pattern>);
 	POpt(pat:Pattern);
 	PMatch;
@@ -84,7 +114,7 @@ class Printer
 
 	static function main()
 	{
-		var printer = new Printer(byte.ByteData.ofString('a = 1'), cast {}, 'test');
+		var printer = new Printer(byte.ByteData.ofString('1 + (1 - 2)'), cast {}, 'test');
 		printer.test();
 	}
 
@@ -192,33 +222,26 @@ class Printer
 
 	public function test()
 	{
-		match(token(), PState(SExpr));
-		trace('--------');
-		match(token());
-		trace('--------');
-		match(token());
-		// match(token());
-		// match(token());
-	}
+		states.add(SExpr);
+		patterns.add(getPattern(SExpr));
 
-	function nextPattern()
-	{
-		return switch (patterns.first())
+		while (true)
 		{
-			case PNoMatch | PMatch | PSeq([]):
-				patterns.pop();
-				states.pop();
-				nextPattern();
-			case _:
-				patterns.first();
+			var tok = token();
+			if (tok.tok == Eof || next(tok) == PNoMatch) break;
+
+			var debug = states.array().map(Std.string);
+			debug.reverse();
+			debug.push(Std.string(tok.tok));
+			trace(debug.join(' > '));
 		}
 	}
 
-	function getPattern(state:State, token:PrintToken):Pattern
+	function getPattern(state:State):Pattern
 	{
 		return switch (state)
 		{
-			case STopLevel:POr([
+			case STopLevel:PList(POr([
 				PState(SMeta),
 				PState(SModifier),
 				PState(SPackage),
@@ -228,7 +251,7 @@ class Printer
 				PState(STypeDef),
 				PState(SAbstract),
 				PState(SEnum)
-			]);
+			]));
 			case SMeta:PSeq([
 				PTok(At),
 				POpt(PTok(DblDot))
@@ -252,12 +275,12 @@ class Printer
 				PTok(Kwd(KwdImport)),
 				PState(STypePath),
 				POpt(PTok(Kwd(KwdIn))),
-				POpt(PState(SIdent)),
+				POpt(PTok(Const(CIdent(null)))),
 				POpt(PTok(Semicolon))
 			]);
 			case SClass:PSeq([
 				PTok(Kwd(KwdClass)),
-				PState(SIdent),
+				PTok(Const(CIdent(null))),
 				POpt(PState(STypeParams)),
 				PList(POr([
 					PState(SExtends),
@@ -296,87 +319,394 @@ class Printer
 			]);
 			case SAbstract:PSeq([
 			]);
-			case SExpr:POr([
-				PState(SAssign),
-				PState(SConst)
+			case SExpr:PSeq([
+				POr([
+					PState(SMeta),
+					PTok(Const(CIdent(null))),
+					PTok(Const(CString(null))),
+					PTok(Const(CFloat(null))),
+					PTok(Const(CInt(null))),
+					PTok(Const(CRegexp(null, null))),
+					PTok(Kwd(KwdTrue)),
+					PTok(Kwd(KwdFalse)),
+					PTok(Kwd(KwdNull)),
+					PTok(Kwd(KwdThis)),
+					PTok(Kwd(KwdBreak)),
+					PTok(Kwd(KwdContinue)),
+					PState(SUntyped),
+					PState(SMacroExpr),
+					PState(SDollar),
+					PState(SFunction),
+					PState(SCast),
+					PState(SVarDecl),
+					PState(SNegative),
+					PState(SBlockOrStructure),
+					PState(SArray),
+					PState(SGroup),
+					PState(SIf),
+					PState(SElse),
+					PState(SFor),
+					PState(SWhile),
+					PState(SDo),
+					PState(SNew),
+					PState(SUnop),
+					PState(SInterval),
+					PState(STry),
+					PState(SSwitch)
+				]),
+				PState(SExprNext)
 			]);
-			case SAssign:PSeq([
-				PState(SIdent),
-				PTok(Binop(OpAssign)),
+			case SExprNext:POr([
+				PState(SCall),
+				PSeq([
+					PTok(Dot),
+					POr([
+						PTok(Const(CIdent(null))),
+						PTok(Kwd(KwdMacro)),
+						PTok(Kwd(KwdNew)),
+						PTok(Dollar(null))
+					]),
+					PState(SExprNext)
+				]),
+				PSeq([
+					PTok(Binop(OpGt)),
+					POpt(PTok(Binop(OpGt))),
+					POpt(PTok(Binop(OpGt))),
+					POpt(PTok(Binop(OpGt))),
+					POpt(PTok(Binop(OpAssign))),
+					PState(SExpr),
+					PState(SExprNext)
+				]),
+				PSeq([
+					PTok(Binop(null)),
+					PState(SExpr),
+					PState(SExprNext)
+				]),
+				PSeq([
+					PTok(Kwd(KwdIn)),
+					PState(SExpr),
+					PState(SExprNext)
+				]),
+				PSeq([
+					PTok(BkOpen),
+					PState(SExpr),
+					PTok(BkClose),
+					PState(SExprNext)
+				]),
+				PSeq([
+					PTok(Question),
+					PState(SExpr),
+					PTok(DblDot),
+					PState(SExpr),
+					PState(SExprNext)
+				]),
+				PSeq([
+					PTok(Unop(null)),
+					PState(SExprNext),
+				])
+			]);
+			case SUntyped:PSeq([
+				PTok(Kwd(KwdUntyped)),
 				PState(SExpr)
 			]);
-			case SIdent: switch (token.tok)
-			{
-				case Const(CIdent(_)): PMatch;
-				case _: PNoMatch;
-			}
-			case SConst: switch (token.tok)
-			{
-				case Const(CString(_) | CFloat(_) | CInt(_) | CRegexp(_,_)): PMatch;
-				case _: PNoMatch;
-			}
+			case SMacroExpr:PSeq([
+				PTok(Kwd(KwdMacro)),
+				POr([
+					PSeq([
+						PTok(DblDot),
+						PState(SComplexType)
+					]),
+					PSeq([
+						PTok(Kwd(KwdVar)),
+						PSep(PState(SVarDecl), PTok(Comma))
+					]),
+					PState(SExpr)
+				])
+			]);
+			case SDollar:PSeq([
+				PTok(Dollar(null)),
+				POpt(PSeq([
+					PTok(BrOpen),
+					PState(SExpr),
+					PTok(BrClose)
+				]))
+			]);
+			case SFunction:PSeq([
+				PTok(Kwd(KwdFunction))
+			]);
+			case SReturn:PSeq([
+				PTok(Kwd(KwdReturn)),
+				POpt(PState(SExpr))
+			]);
+			case SThrow:PSeq([
+				PTok(Kwd(KwdFunction)),
+				PState(SExpr)
+			]);
+			case SCast:PSeq([
+				PTok(Kwd(KwdCast)),
+				POr([
+					PSeq([
+						PTok(POpen),
+						PState(SExpr),
+						POpt(PSeq([
+							PTok(Comma),
+							PState(SComplexType)
+						])),
+						PTok(PClose)
+					]),
+					PState(SExpr)
+				])
+			]);
+			case SVarDecl:PSeq([
+				PTok(Kwd(KwdVar))
+			]);
+			case SNegative:PSeq([
+				PTok(Binop(OpSub)),
+				PState(SExpr)
+			]);
+			case SBlockOrStructure:POr([
+				PState(SBlock),
+				PState(SStructure)
+			]);
+			case SBlock:PSeq([
+				PTok(BrOpen),
+				PSep(PState(SBlockElement), PTok(Semicolon)),
+				PTok(BrClose)
+			]);
+			case SStructure:PSeq([
+				PTok(BrOpen),
+				PSep(PState(SStructureElement), PTok(Comma)),
+				PTok(BrClose)
+			]);
+			case SBlockElement:POr([
+				PSeq([
+					PTok(Kwd(KwdVar)),
+					PSep(PState(SVarDecl), PTok(Comma)),
+					PTok(Semicolon)
+				]),
+				PSeq([
+					PState(SExpr),
+					PTok(Semicolon)
+				])
+			]);
+			case SStructureElement:PSeq([
+			]);
+			case SArray:PSeq([
+				PTok(BkOpen),
+				PSep(PState(SExpr), PTok(Comma)),
+				PTok(BkClose)
+			]);
+			case SComplexType:PSeq([
+			]);
+			case SGroup:PSeq([
+				PTok(POpen),
+				PState(SExpr),
+				POpt(PSeq([
+					PTok(DblDot),
+					PState(SComplexType)
+				])),
+				PTok(PClose)
+			]);
+			case SIf:PSeq([
+				PTok(Kwd(KwdIf)),
+				PTok(POpen),
+				PState(SExpr),
+				PTok(PClose),
+				PState(SExpr),
+				POpt(PTok(Semicolon)),
+				POpt(PState(SElse))
+			]);
+			case SElse:PSeq([
+				PTok(Kwd(KwdElse)),
+				PState(SExpr)
+			]);
+			case SNew:PSeq([
+				PTok(Kwd(KwdNew)),
+				PState(STypePath),
+				PTok(POpen),
+				PSep(PState(SExpr), PTok(Comma)),
+				PTok(PClose)
+			]);
+			case SFor:PSeq([
+				PTok(Kwd(KwdFor)),
+				PState(SExpr),
+				PTok(POpen),
+				PState(SExpr),
+				PTok(PClose),
+				PState(SExpr)
+			]);
+			case SWhile:PSeq([
+				PTok(Kwd(KwdWhile)),
+				PState(SExpr),
+				PTok(POpen),
+				PState(SExpr),
+				PTok(PClose),
+				PState(SExpr)
+			]);
+			case SDo:PSeq([
+				PTok(Kwd(KwdDo)),
+				PState(SExpr),
+				PTok(Kwd(KwdWhile)),
+				PTok(POpen),
+				PState(SExpr),
+				PTok(PClose)
+			]);
+			case SUnop:PSeq([
+				PTok(Unop(null)),
+				PState(SExpr)
+			]);
+			case SInterval:PSeq([
+				PTok(IntInterval(null)),
+				PState(SExpr)
+			]);
+			case STry:PSeq([
+				PTok(Kwd(KwdTry)),
+				PState(SExpr),
+				PList(PState(SCatch))
+			]);
+			case SSwitch:PSeq([
+				PTok(Kwd(KwdSwitch)),
+				POr([
+					PSeq([
+						PTok(POpen),
+						PState(SExpr),
+						PTok(PClose)
+					]),
+					PState(SExpr)
+				]),
+				PTok(BrOpen),
+				PList(POr([
+					PState(SCase),
+					PState(SDefault)
+				])),
+				PTok(BrClose)
+			]);
+			case SCase:PSeq([
+				PTok(Kwd(KwdCase)),
+				PSep(PState(SExpr), PTok(Comma)),
+				POr([
+					PTok(DblDot),
+					PSeq([
+						PTok(Kwd(KwdIf)),
+						PTok(POpen),
+						PState(SExpr),
+						PTok(PClose),
+						PTok(DblDot)
+					])
+				]),
+				PList(PState(SBlockElement))
+
+			]);
+			case SDefault:PSeq([
+				PTok(Kwd(KwdDefault)),
+				PTok(DblDot),
+				PList(PState(SBlockElement))
+			]);
+			case SCatch:PSeq([
+				PTok(Kwd(KwdCatch)),
+				PTok(POpen),
+				POr([
+					PTok(Const(CIdent(null))),
+					PTok(Kwd(KwdMacro)),
+					PTok(Kwd(KwdNew)),
+					PTok(Dollar(null))
+				]),
+				PTok(DblDot),
+				PState(SComplexType),
+				PTok(PClose),
+				PState(SExpr)
+			]);
+			case SCall:PSeq([
+				PTok(POpen),
+				PSep(PState(SExpr), PTok(Comma)),
+				PTok(PClose),
+				PState(SExprNext)
+			]);
 		}
 	}
 
-	function match(token:PrintToken, ?pattern:Pattern)
+	function next(token:PrintToken)
 	{
-		if (pattern == null) pattern = nextPattern();
+		return match(token, patterns.first());
+	}
+
+	function matchEnum(e:EnumValue, pattern:EnumValue)
+	{
+		if (Type.getEnum(e) != Type.getEnum(pattern)) return PNoMatch;
+		if (Type.enumIndex(e) != Type.enumIndex(pattern)) return PNoMatch;
+		var eParams = Type.enumParameters(e);
+		var pParams = Type.enumParameters(pattern);
+		if (eParams.length != pParams.length) return PNoMatch;
+		for (i in 0...eParams.length)
+			if (Type.getEnum(pParams[i]) != null && matchEnum(eParams[i], pParams[i]) == PNoMatch)
+				return PNoMatch;
+		return PMatch;
+	}
+
+	function match(token:PrintToken, pattern:Pattern)
+	{
 		trace('match ${token.tok} with $pattern');
+		patterns.add(pattern);
 
 		switch (pattern)
 		{
 			case POpt(pat):
-				return match(token, pat);
+				switch (match(token, pat))
+				{
+					case PMatch:
+						patterns.pop();
+						return PMatch;
+					case _:
+				}
 			case PTok(tok):
-				return match(token, Type.enumEq(token.tok, tok) ? PMatch : PNoMatch);
+				switch (matchEnum(token.tok, tok))
+				{
+					case PMatch:
+						patterns.pop();
+						return PMatch;
+					case _:
+				}
 			case PSeq(pats):
 				while (pats.length > 0)
 				{
 					var pat = pats[0];
 					switch (match(token, pat))
 					{
-						case pat = PMatch:
+						case PMatch:
 							pats.shift();
-							return pat;
+							if (pats.length == 0) patterns.pop();
+							return PMatch;
 						case PNoMatch: switch (pat)
 						{
 							case POpt(_):
 								pats.shift();
-								return pat;
+								if (pats.length == 0) patterns.pop();
+								// return pat;
 							case _: break;
 						}
 						case _:
 					}
 				}
-				trace(">>>");
-				patterns.pop();
-				states.pop();
-				return PNoMatch;
 			case POr(pats):
 				for (pat in pats)
 				{
-					var match = match(token, pat);
-					switch (match)
+					switch (match(token, pat))
 					{
-						case PMatch: return pat;
+						case PMatch:
+							patterns.pop();
+							return PMatch;
 						case _:
 					}
 				}
-				return PNoMatch;
-			case PList(pat):
-				return PNoMatch;
 			case PState(state):
 				states.add(state);
-				var pat = getPattern(state, token);
-				patterns.add(pat);
-				return match(token, pat);
-			case PNoMatch:
-				return match(token);
-			case PMatch:
-				trace(states.array().join(' > '));
-				return PMatch;
-			case pat:
-				return pat;
+				trace('enter $state');
+				if (match(token, getPattern(state)) == PMatch) return PMatch;
+				trace('exit $state');
+				states.pop();
+			case _:
 		}
+		patterns.pop();
+		return PNoMatch;
 	}
 }
