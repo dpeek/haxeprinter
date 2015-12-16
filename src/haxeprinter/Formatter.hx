@@ -3,6 +3,8 @@ package haxeprinter;
 import haxe.macro.Expr;
 import haxeparser.Data;
 import haxeparser.HaxeLexer;
+import hxparse.LexerTokenSource;
+import hxparse.TokenSource;
 
 enum Node
 {
@@ -49,7 +51,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	var hasNewlined = false;
 
 	public function new(input:byte.ByteData, config:Config, sourceName:String) {
-		super(new HaxeLexer(input, sourceName), HaxeLexer.tok);
+		super(new LexerTokenSource(new HaxeLexer(input, sourceName), HaxeLexer.tok));
 		this.input = input;
 		this.cfg = config;
 
