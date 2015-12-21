@@ -786,7 +786,7 @@ class Formatter extends hxparse.Parser<HaxeLexer, Token> implements hxparse.Pars
 	
 	// TODO: this whole part is really awkward
 	function parseBlockOrStructure() {
-		newline();
+		brace(cfg.cuddle_method_braces);
 		print('{');
 		newline();
 		moreTabs();
